@@ -87,6 +87,7 @@ redis-server
 cd NetCatch
 celery -A app.tasks.test_runner worker --pool=solo --loglevel=info
 
+```
 
 📂 项目结构
 text
