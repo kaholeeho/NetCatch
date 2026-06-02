@@ -89,7 +89,7 @@ celery -A app.tasks.test_runner worker --pool=solo --loglevel=info
 
 ```
 
-📂 项目结构
+## 📂 项目结构
 text
 NetCatch/
 ├── app/
@@ -108,8 +108,8 @@ NetCatch/
 └── README.md
 
 
-🔥 核心功能
-接口测试
+## 🔥 核心功能
+### 接口测试
 功能	描述
 HTTP 方法	支持 GET、POST、PUT、DELETE、PATCH 等
 环境变量	动态参数替换，{{variable}} 语法
@@ -117,13 +117,13 @@ HTTP 方法	支持 GET、POST、PUT、DELETE、PATCH 等
 用例管理	用例的增删改查、复制、导入/导出
 批量运行	将多个用例组成集合，一键执行并生成报告
 数据工厂	$random.email、$uuid 等函数，实时生成唯一数据
-Web 自动化脚本管理
+### Web 自动化脚本管理
 功能	描述
 脚本编排	可视化步骤编辑，支持 goto、click、fill、assert 等 12 种动作
 调试执行	实时运行并展示步骤结果，失败自动截图回传
 批量运行	多个脚本组合成集合，异步执行并记录任务
 报告落库	执行结果与截图持久化，便于检索与追溯
-AI 生成用例
+### AI 生成用例
 功能	描述
 自然语言描述	输入接口路径、方法、参数及需求，AI 自动生成用例
 结构化输出	强制 JSON 格式，包含名称、方法、URL、断言等字段
@@ -131,7 +131,7 @@ AI 生成用例
 生成记录	每次生成均保存历史，方便查看与重试
 
 
-⚙️ 环境变量配置 (.env)
+## ⚙️ 环境变量配置 (.env)
 ini
 # MySQL
 MYSQL_USER=root
@@ -150,7 +150,7 @@ ANTHROPIC_AUTH_TOKEN=sk-xxxxx
 ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 
 
-🧪 测试报告示例
+## 🧪 测试报告示例
 批量执行后，前端展示：
 
 总用例数、通过数、失败数、通过率
@@ -160,7 +160,7 @@ ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 失败用例的具体错误信息（如“用户名已存在”）
 
 
-❓ 常见问题
+## ❓ 常见问题
 启动失败
 Q: Redis 连接失败？
 A: 确保 Redis 已启动：redis-cli ping 应返回 PONG。
@@ -184,7 +184,7 @@ flask db migrate -m "reset"
 flask db upgrade
 
 
-📝 更新日志
+## 📝 更新日志
 2026-06-02
 ✅ 完成全部核心功能：接口测试、Web 测试、AI 生成、批量运行、报告展示
 
@@ -195,7 +195,7 @@ flask db upgrade
 ✅ 支持 Celery 异步任务
 
 
-历史版本
+## 历史版本
 基础脚手架搭建（Flask + SQLAlchemy + MySQL）
 
 JWT 认证与项目管理
@@ -207,9 +207,9 @@ Web 测试 Playwright 集成与步骤编辑器
 AI 生成用例（DeepSeek API 调用与 JSON 解析）
 
 
-🤝 贡献
+## 🤝 贡献
 欢迎提交 Issue 和 Pull Request！
 
 
-📄 许可证
+## 📄 许可证
 MIT License
