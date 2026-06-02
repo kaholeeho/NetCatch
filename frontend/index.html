@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetCatch - API 测试平台</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f7fa}
+        .login-wrap{height:100vh;display:flex;justify-content:center;align-items:center;background:linear-gradient(135deg,#667eea,#764ba2)}
+        .login-box{width:400px}.login-box .el-card__body{padding:40px}
+        .logo-text{text-align:center;font-size:32px;font-weight:700;color:#409eff;margin-bottom:6px}
+        .login-title{text-align:center;font-size:22px;font-weight:600;color:#303133;margin-bottom:28px}
+        .layout-wrap{height:100vh;display:flex;flex-direction:column}
+        .topbar{display:flex;align-items:center;justify-content:space-between;height:50px;padding:0 20px;background:#fff;border-bottom:1px solid #e4e7ed;flex-shrink:0}
+        .topbar .brand{font-size:18px;font-weight:700;color:#409eff}
+        .body-wrap{display:flex;flex:1;overflow:hidden}
+        .sidebar{width:200px;background:#304156;flex-shrink:0;overflow-y:auto}
+        .sidebar .el-menu{border-right:none}
+        .main-area{flex:1;padding:20px;overflow-y:auto}
+        .page-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+        .page-hd h3{font-size:18px;font-weight:600;color:#303133}
+        .mb10{margin-bottom:10px}
+        .mt10{margin-top:10px}
+        .mt16{margin-top:16px}
+        .flex{display:flex}.flex-1{flex:1}.gap8{gap:8px}
+        .ta-center{text-align:center}
+        .c-gray{color:#909399}
+        .kv-row{display:flex;gap:6px;margin-bottom:6px;align-items:center}
+        .kv-row .k-inp{flex:0 0 180px}
+        .kv-row .v-inp{flex:1}
+        .mtag{font-weight:700;min-width:56px;text-align:center}
+        .mtag.GET{background:#e6f7ff;color:#1890ff;border-color:#91d5ff}
+        .mtag.POST{background:#f6ffed;color:#52c41a;border-color:#b7eb8f}
+        .mtag.PUT{background:#fff7e6;color:#fa8c16;border-color:#ffd591}
+        .mtag.DELETE{background:#fff1f0;color:#ff4d4f;border-color:#ffa39e}
+        .mtag.PATCH{background:#f9f0ff;color:#722ed1;border-color:#d3adf7}
+        .resp-body{background:#1e1e1e;color:#d4d4d4;padding:14px;border-radius:4px;font-family:'Cascadia Code','Fira Code',monospace;font-size:13px;line-height:1.5;max-height:460px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+        .empty-box{text-align:center;padding:50px 0;color:#909399}
+        .empty-box p{margin-top:10px}
+        .el-menu-item.is-active{background-color:#409eff!important}
+        .card-mb{margin-bottom:16px}
+    </style>
+</head>
+<body>
+    <div id="app"><router-view /></div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://unpkg.com/element-plus"></script>
+    <script src="https://unpkg.com/@element-plus/icons-vue@2.3.1/dist/index.iife.min.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="https://unpkg.com/vue-router@4"></script>
+
+    <script>
+    // ===================== destructure =====================
+    const {createApp,reactive,nextTick} = Vue;
+    const {createRouter,createWebHashHistory} = VueRouter;
+    const ElMsg = ElementPlus.ElMessage;
+    const ElMsgBox = ElementPlus.ElMessageBox;
+
+    // ===================== Store (global + on window for template access) =====================
+    window.NC = reactive({
+        token: localStorage.getItem('nc_t') || '',
+        user: JSON.parse(localStorage.getItem('nc_u') || 'null'),
+        project: JSON.parse(localStorage.getItem('nc_p') || 'null'),
+
+        setToken(t){ this.token = t; localStorage.setItem('nc_t', t) },
+        setUser(u){ this.user = u; localStorage.setItem('nc_u', JSON.stringify(u)) },
+        setProject(p){ this.project = p; localStorage.setItem('nc_p', JSON.stringify(p)) },
+        logout(){
+            this.token=''; this.user=null; this.project=null;
+            localStorage.removeItem('nc_t'); localStorage.removeItem('nc_u'); localStorage.removeItem('nc_p');
+        }
+    });
+
+    // ===================== Axios =====================
+    const http = axios.create({baseURL:'http://127.0.0.1:5000/api', timeout:60000, headers:{'Content-Type':'application/json'}});
+    http.interceptors.request.use(cfg=>{
+        if(window.NC.token) cfg.headers.Authorization = 'Bearer ' + window.NC.token;
+        // Ensure POST/PUT/PATCH always carry Content-Type: application/json
+        if(cfg.method && ['post','put','patch'].includes(cfg.method.toLowerCase())){
+            if(!cfg.headers['Content-Type']) cfg.headers['Content-Type'] = 'application/json';
+        }
+        return cfg;
+    });
+    http.interceptors.response.use(
+        res => res.data,
+        err => {
+            if(err.response && err.response.status === 401){
+                window.NC.logout();
+                setTimeout(()=>location.hash='#/login',100);
+                ElMsg.error('登录已过期，请重新登录');
+            }
+            return Promise.reject(err);
+        }
+    );
+
+    // ===================== Helpers =====================
+    function fmtTime(t){ return t ? t.replace('T',' ').substring(0,19) : '-' }
+    function fmtBody(obj){
+        if(!obj) return '';
+        if(typeof obj === 'string'){ try{ return JSON.stringify(JSON.parse(obj),null,2) }catch(e){ return obj } }
+        try{ return JSON.stringify(obj,null,2) }catch(e){ return String(obj) }
+    }
+    function isHtml(str){
+        return typeof str==='string' && /^\s*</.test(str.trim());
+    }
+    function stCodeType(c){
+        if(c<200) return 'info'; if(c<300) return 'success'; if(c<400) return 'warning'; return 'danger';
+    }
+    function kvToObj(arr){
+        const o={};
+        (arr||[]).forEach(x=>{ if(x.key) o[x.key.trim()]=x.value });
+        return o;
+    }
+    function buildCasePayload(projId,form){
+        const headers = kvToObj(form.headers);
+        const params = kvToObj(form.params);
+        let body=null;
+        if(form.body_type==='json' && form.body_text){
+            try{ body=JSON.parse(form.body_text) }catch(e){ body=form.body_text }
+        }else if(form.body_type==='form'){
+            body = kvToObj(form.body_form);
+        }else if(form.body_type==='text' && form.body_text){
+            body = form.body_text;
+        }
+        return {
+            project_id: projId,
+            name: form.name || ('临时_'+Date.now()),
+            method: form.method,
+            url: form.url,
+            headers: Object.keys(headers).length ? headers : null,
+            params: Object.keys(params).length ? params : null,
+            body: body,
+            body_type: form.body_type==='none' ? 'json' : form.body_type,
+            assertions: [],
+            extract: []
+        };
+    }
+
+    // ===================== KVEditor =====================
+    const KVEditor = {
+        props: {modelValue:{type:Array,default:()=>[]}},
+        emits: ['update:modelValue'],
+        template:`<div>
+            <div v-for="(it,i) in local" :key="i" class="kv-row">
+                <el-input v-model="it.key" placeholder="Key" size="small" class="k-inp" clearable />
+                <el-input v-model="it.value" placeholder="Value" size="small" class="v-inp" clearable />
+                <DataFactoryDropdown />
+                <el-button size="small" type="danger" @click="del(i)" circle>×</el-button>
+            </div>
+            <el-button size="small" @click="add" style="margin-top:2px">+ 添加</el-button>
+        </div>`,
+        data(){return{local:[]}},
+        watch:{
+            modelValue:{immediate:true,h(v){this.local=v&&v.length?v.map(x=>({...x})):[]}},
+            local:{deep:true,h(v){this.$emit('update:modelValue',v.filter(x=>x.key||x.value))}}
+        },
+        methods:{add(){this.local.push({key:'',value:''})},del(i){this.local.splice(i,1)}}
+    };
+
+    // ===================== DataFactoryDropdown =====================
+    const DataFactoryDropdown = {
+        template:`<el-dropdown trigger="click" size="small" @command="doInsert" style="margin-left:2px;display:inline-flex;vertical-align:middle">
+            <el-button size="small" text type="primary" style="font-size:12px;padding:2px 6px">数据工厂 ▾</el-button>
+            <template #dropdown>
+                <el-dropdown-menu>
+                    <el-dropdown-item command="{{$uuid}}">$uuid</el-dropdown-item>
+                    <el-dropdown-item command="{{$timestamp}}">$timestamp</el-dropdown-item>
+                    <el-dropdown-item command="{{$datetime}}">$datetime</el-dropdown-item>
+                    <el-dropdown-item divided command="{{$random.email}}">$random.email</el-dropdown-item>
+                    <el-dropdown-item command="{{$random.phone}}">$random.phone</el-dropdown-item>
+                    <el-dropdown-item command="{{$random.name}}">$random.name</el-dropdown-item>
+                    <el-dropdown-item command="{{$random.address}}">$random.address</el-dropdown-item>
+                    <el-dropdown-item divided command="{{$random.string(8)}}">$random.string(8)</el-dropdown-item>
+                    <el-dropdown-item command="{{$random.number(1,100)}}">$random.number(1,100)</el-dropdown-item>
+                </el-dropdown-menu>
+            </template>
+        </el-dropdown>`,
+        methods:{
+            doInsert(val){
+                const el=document.activeElement;
+                if(!el||(el.tagName!=='INPUT'&&el.tagName!=='TEXTAREA'&&el.tagName!=='TEXTAREA')){
+                    // try to find an input inside the closest KV row
+                    const row=el?.closest?.('.kv-row');
+                    const inp=row?.querySelector('.v-inp input')||row?.querySelector('.v-inp textarea')||row?.querySelector('input:not([type=hidden])');
+                    if(inp){inp.focus();inp.selectionStart=inp.selectionEnd=inp.value.length;return this.doInsert(val)}
+                    ElementPlus.ElMessage.warning('请先点击要插入的输入框');return
+                }
+                const start=el.selectionStart,end=el.selectionEnd;
+                const before=el.value.substring(0,start),after=el.value.substring(end);
+                el.value=before+val+after;
+                el.selectionStart=el.selectionEnd=start+val.length;
+                el.dispatchEvent(new Event('input',{bubbles:true}));
+                el.focus();
+            }
+        }
+    };
+
+    // ===================== Pages =====================
+
+    // -------- Login --------
+    const LoginPage = {
+        template:`<div class="login-wrap">
+            <el-card class="login-box" shadow="always">
+                <div class="logo-text">NetCatch</div>
+                <div class="login-title">API 测试平台</div>
+                <el-form @keyup.enter="login">
+                    <el-form-item><el-input v-model="f.user" placeholder="用户名" size="large" clearable /></el-form-item>
+                    <el-form-item><el-input v-model="f.pwd" type="password" placeholder="密码" size="large" show-password /></el-form-item>
+                    <el-form-item><el-button type="primary" size="large" style="width:100%" :loading="loading" @click="login">登 录</el-button></el-form-item>
+                </el-form>
+                <div class="ta-center c-gray" style="font-size:13px">没有账号？<router-link to="/register" style="color:#409eff">立即注册</router-link></div>
+            </el-card>
+        </div>`,
+        data(){return{store:window.NC,f:{user:'',pwd:''},loading:false}},
+        methods:{
+            async login(){
+                if(!this.f.user||!this.f.pwd){ElMsg.warning('请输入用户名和密码');return}
+                this.loading=true;
+                try{
+                    const r=await http.post('/auth/login',{username:this.f.user,password:this.f.pwd});
+                    if(r.code===200){
+                        this.store.setToken(r.data.token);
+                        this.store.setUser(r.data.user);
+                        ElMsg.success('登录成功');
+                        this.$router.push('/');
+                    }else{ElMsg.error(r.msg||'登录失败')}
+                }catch(e){ElMsg.error(e.response?.data?.msg||'网络错误，请检查后端是否启动')
+                }finally{this.loading=false}
+            }
+        }
+    };
+
+    // -------- Register --------
+    const RegisterPage = {
+        template:`<div class="login-wrap">
+            <el-card class="login-box" shadow="always">
+                <div class="logo-text">NetCatch</div>
+                <div class="login-title">用户注册</div>
+                <el-form @keyup.enter="reg">
+                    <el-form-item><el-input v-model="f.user" placeholder="用户名" size="large" /></el-form-item>
+                    <el-form-item><el-input v-model="f.pwd" type="password" placeholder="密码（至少6位）" size="large" show-password /></el-form-item>
+                    <el-form-item><el-input v-model="f.cfm" type="password" placeholder="确认密码" size="large" show-password /></el-form-item>
+                    <el-form-item><el-button type="primary" size="large" style="width:100%" :loading="loading" @click="reg">注 册</el-button></el-form-item>
+                </el-form>
+                <div class="ta-center c-gray" style="font-size:13px">已有账号？<router-link to="/login" style="color:#409eff">返回登录</router-link></div>
+            </el-card>
+        </div>`,
+        data(){return{f:{user:'',pwd:'',cfm:''},loading:false}},
+        methods:{
+            async reg(){
+                const {user,pwd,cfm}=this.f;
+                if(!user||!pwd){ElMsg.warning('请填写完整信息');return}
+                if(pwd.length<6){ElMsg.warning('密码不能少于6位');return}
+                if(pwd!==cfm){ElMsg.warning('两次密码不一致');return}
+                this.loading=true;
+                try{
+                    const r=await http.post('/auth/register',{username:user,password:pwd});
+                    if(r.code===201){ElMsg.success('注册成功，请登录');this.$router.push('/login')}
+                    else{ElMsg.error(r.msg||'注册失败')}
+                }catch(e){ElMsg.error(e.response?.data?.msg||'网络错误')
+                }finally{this.loading=false}
+            }
+        }
+    };
+
+    // -------- Main Layout --------
+    const MainLayout = {
+        template:`<div class="layout-wrap">
+            <div class="topbar">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <span class="brand">NetCatch</span>
+                    <el-tag v-if="s.project" type="primary" effect="plain" size="small" closable @close="leaveProj">{{s.project.name}}</el-tag>
+                    <el-tag v-else type="warning" size="small">未选择项目</el-tag>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:13px;color:#606266">{{s.user?.username||'用户'}}</span>
+                    <el-button size="small" text @click="doLogout">退出</el-button>
+                </div>
+            </div>
+            <div class="body-wrap">
+                <div class="sidebar">
+                    <el-menu :default-active="rp.path" router background-color="#304156" text-color="#bfcbd9" active-text-color="#409eff">
+                        <el-menu-item index="/"><span>项目列表</span></el-menu-item>
+                        <el-menu-item index="/test"><span>接口测试</span></el-menu-item>
+                        <el-menu-item index="/cases"><span>用例管理</span></el-menu-item>
+                        <el-menu-item index="/ai"><span>AI 生成</span></el-menu-item>
+                        <el-menu-item index="/web"><span>Web 测试</span></el-menu-item>
+                    </el-menu>
+                </div>
+                <div class="main-area"><router-view /></div>
+            </div>
+        </div>`,
+        data(){return{s:window.NC}},
+        computed:{rp(){return this.$route}},
+        methods:{
+            leaveProj(){this.s.setProject(null);this.$router.push('/')},
+            doLogout(){this.s.logout();ElMsg.success('已退出');this.$router.push('/login')}
+        }
+    };
+
+    // -------- Dashboard (Project List) --------
+    const Dashboard = {
+        template:`<div>
+            <div class="page-hd"><h3>我的项目</h3><el-button type="primary" size="small" @click="dlg=true">+ 新建</el-button></div>
+            <el-card class="card-mb">
+                <template v-if="loading"><div class="empty-box"><p>加载中...</p></div></template>
+                <template v-else-if="list.length===0"><div class="empty-box"><p>暂无项目，点击右上角新建</p></div></template>
+                <el-table v-else :data="list" stripe @row-click="sel" style="cursor:pointer">
+                    <el-table-column label="名称" prop="name" min-width="180" />
+                    <el-table-column label="描述" min-width="250"><template #default="{row}">{{row.description||'-'}}</template></el-table-column>
+                    <el-table-column label="创建时间" width="180"><template #default="{row}">{{fmt(row.create_time)}}</template></el-table-column>
+                    <el-table-column label="操作" width="80" fixed="right">
+                        <template #default="{row}"><el-button type="danger" size="small" text @click.stop="del(row)">删除</el-button></template>
+                    </el-table-column>
+                </el-table>
+            </el-card>
+            <el-dialog v-model="dlg" title="新建项目" width="420px">
+                <el-form :model="fm" label-width="70px">
+                    <el-form-item label="名称"><el-input v-model="fm.name" placeholder="输入项目名称" /></el-form-item>
+                    <el-form-item label="描述"><el-input v-model="fm.desc" type="textarea" :rows="3" placeholder="可选" /></el-form-item>
+                </el-form>
+                <template #footer><el-button @click="dlg=false">取消</el-button><el-button type="primary" :loading="saving" @click="create">创建</el-button></template>
+            </el-dialog>
+        </div>`,
+        data(){return{store:window.NC,list:[],loading:false,dlg:false,saving:false,fm:{name:'',desc:''}}},
+        mounted(){this.fetch()},
+        methods:{
+            fmt:fmtTime,
+            async fetch(){
+                this.loading=true;
+                try{const r=await http.get('/project');if(r.code===200)this.list=r.data||[]}catch(e){}finally{this.loading=false}
+            },
+            sel(p){this.store.setProject(p);ElMsg.success('已选择：'+p.name);this.$router.push('/test')},
+            async create(){
+                if(!this.fm.name.trim()){ElMsg.warning('请输入名称');return}
+                this.saving=true;
+                try{
+                    const r=await http.post('/project',{name:this.fm.name.trim(),description:this.fm.desc});
+                    if(r.code===201){
+                        ElMsg.success('创建成功');this.dlg=false;this.fm={name:'',desc:''};
+                        this.store.setProject(r.data);await this.fetch();this.$router.push('/test');
+                    }
+                }catch(e){ElMsg.error(e.response?.data?.msg||'创建失败')}finally{this.saving=false}
+            },
+            async del(p){
+                try{
+                    await ElMsgBox.confirm('确定删除「'+p.name+'」？数据不可恢复！','警告',{type:'warning',confirmButtonText:'删除',cancelButtonText:'取消'});
+                    const r=await http.delete('/project/'+p.id);
+                    if(r.code===200){
+                        ElMsg.success('已删除');
+                        if(this.store.project&&this.store.project.id===p.id)this.store.setProject(null);
+                        await this.fetch();
+                    }
+                }catch(e){if(e!=='cancel')ElMsg.error(e.response?.data?.msg||'删除失败')}
+            }
+        }
+    };
+
+    // -------- API Test --------
+    const ApiTest = {
+        components:{KVEditor},
+        template:`<div>
+            <h3 class="page-hd" style="margin-bottom:12px">接口测试</h3>
+            <template v-if="!s.project">
+                <el-card><div class="empty-box"><p>请先选择项目</p><el-button type="primary" style="margin-top:10px" @click="$router.push('/')">选择项目</el-button></div></el-card>
+            </template>
+            <template v-else>
+                <!-- Request form -->
+                <el-card class="card-mb">
+                    <div style="display:flex;gap:8px;margin-bottom:12px">
+                        <el-select v-model="fm.method" style="width:110px">
+                            <el-option v-for="m in methods" :key="m" :label="m" :value="m" />
+                        </el-select>
+                        <el-input v-model="fm.url" placeholder="https://api.example.com/endpoint" clearable class="flex-1" />
+                    </div>
+                    <el-tabs v-model="tab" type="border-card">
+                        <el-tab-pane label="Params" name="p"><KVEditor v-model="fm.params" /></el-tab-pane>
+                        <el-tab-pane label="Headers" name="h"><KVEditor v-model="fm.headers" /></el-tab-pane>
+                        <el-tab-pane label="Body" name="b">
+                            <el-radio-group v-model="fm.body_type" style="margin-bottom:10px" size="small">
+                                <el-radio-button value="none">none</el-radio-button>
+                                <el-radio-button value="json">JSON</el-radio-button>
+                                <el-radio-button value="form">Form</el-radio-button>
+                                <el-radio-button value="text">Text</el-radio-button>
+                            </el-radio-group>
+                            <el-input v-if="fm.body_type==='json'" v-model="fm.body_text" type="textarea" :rows="6" placeholder='{"key":"value"}' style="font-family:monospace" />
+                            <div v-if="fm.body_type==='json'" style="text-align:right;margin-top:2px"><DataFactoryDropdown /></div>
+                            <KVEditor v-if="fm.body_type==='form'" v-model="fm.body_form" />
+                            <el-input v-if="fm.body_type==='text'" v-model="fm.body_text" type="textarea" :rows="6" />
+                            <div v-if="fm.body_type==='text'" style="text-align:right;margin-top:2px"><DataFactoryDropdown /></div>
+                        </el-tab-pane>
+                    </el-tabs>
+                    <div class="mt16 flex gap8">
+                        <el-button type="primary" :loading="sending" @click="sendReq">发送请求</el-button>
+                        <el-button @click="showSave=true">保存为用例</el-button>
+                        <el-button @click="resetForm">重置</el-button>
+                    </div>
+                </el-card>
+
+                <!-- Response -->
+                <el-card v-if="resp" class="card-mb" :style="{borderLeft:'3px solid '+(resp.success?'#67c23a':'#f56c6c')}">
+                    <template #header>
+                        <div class="flex gap8" style="align-items:center">
+                            <b>响应</b>
+                            <el-tag v-if="resp.status_code" :type="st(resp.status_code)" effect="dark">{{resp.status_code}}</el-tag>
+                            <span v-if="resp.response_time" class="c-gray" style="font-size:13px">{{(resp.response_time*1000).toFixed(0)}} ms</span>
+                            <el-tag v-if="resp.success!==undefined" :type="resp.success?'success':'danger'" size="small">{{resp.success?'通过':'失败'}}</el-tag>
+                        </div>
+                        <el-alert v-if="resp.error" :title="resp.error" type="error" show-icon :closable="false" style="margin-top:6px" />
+                        <el-alert v-else-if="resp.response_body && isHtml(fmt(resp.response_body))" title="响应内容为 HTML，请检查目标 URL 是否为 API 接口" type="warning" show-icon :closable="false" style="margin-top:6px" />
+                    </template>
+                    <el-tabs v-if="resp.response_body!==undefined||resp.response_headers">
+                        <el-tab-pane label="Body"><pre class="resp-body">{{fmt(resp.response_body)}}</pre></el-tab-pane>
+                        <el-tab-pane label="Headers"><pre class="resp-body">{{fmt(resp.response_headers)}}</pre></el-tab-pane>
+                    </el-tabs>
+                </el-card>
+
+                <!-- Case list -->
+                <el-card class="card-mb">
+                    <template #header><div class="flex gap8" style="align-items:center"><b>项目用例</b><el-button size="small" type="primary" @click="openNewCase">+ 新建用例</el-button></div></template>
+                    <template v-if="casesLoading"><div class="empty-box"><p>加载中...</p></div></template>
+                    <template v-else-if="cases.length===0"><div class="empty-box"><p>暂无用例</p></div></template>
+                    <el-table v-else :data="cases" stripe size="small">
+                        <el-table-column label="方法" width="80"><template #default="{row}"><el-tag :class="'mtag '+row.method" class="mtag" size="small" effect="plain">{{row.method}}</el-tag></template></el-table-column>
+                        <el-table-column label="名称" prop="name" min-width="160" show-overflow-tooltip />
+                        <el-table-column label="URL" min-width="260" show-overflow-tooltip><template #default="{row}">{{row.url}}</template></el-table-column>
+                        <el-table-column label="操作" width="200" fixed="right">
+                            <template #default="{row}">
+                                <el-button size="small" text type="primary" @click="editCase(row)">编辑</el-button>
+                                <el-button size="small" text type="primary" @click="runCase(row)">调试</el-button>
+                                <el-button size="small" text type="danger" @click="delCase(row)">删除</el-button>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                </el-card>
+
+                <!-- Save dialog -->
+                <el-dialog v-model="showSave" title="保存为用例" width="400px">
+                    <el-form><el-form-item label="名称"><el-input v-model="saveName" placeholder="用例名称" /></el-form-item></el-form>
+                    <template #footer><el-button @click="showSave=false">取消</el-button><el-button type="primary" :loading="savingCase" @click="doSave">保存</el-button></template>
+                </el-dialog>
+
+                <!-- New/Edit case dialog -->
+                <el-dialog v-model="showCaseDlg" :title="editingId?'编辑用例':'新建用例'" width="680px">
+                    <el-form :model="cfm" label-width="70px">
+                        <el-form-item label="用例名称"><el-input v-model="cfm.name" placeholder="用例名称" /></el-form-item>
+                        <div class="flex gap8" style="margin-bottom:12px">
+                            <el-select v-model="cfm.method" style="width:110px">
+                                <el-option v-for="m in methods" :key="m" :label="m" :value="m" />
+                            </el-select>
+                            <el-input v-model="cfm.url" placeholder="请求 URL" class="flex-1" />
+                        </div>
+                        <el-tabs type="border-card">
+                            <el-tab-pane label="Headers"><KVEditor v-model="cfm.headers" /></el-tab-pane>
+                            <el-tab-pane label="Params"><KVEditor v-model="cfm.params" /></el-tab-pane>
+                            <el-tab-pane label="Body">
+                                <el-radio-group v-model="cfm.body_type" style="margin-bottom:8px" size="small">
+                                    <el-radio-button value="none">none</el-radio-button>
+                                    <el-radio-button value="json">JSON</el-radio-button>
+                                    <el-radio-button value="form">Form</el-radio-button>
+                                    <el-radio-button value="text">Text</el-radio-button>
+                                </el-radio-group>
+                                <el-input v-if="cfm.body_type==='json'" v-model="cfm.body_text" type="textarea" :rows="5" placeholder='{"key":"value"}' style="font-family:monospace" />
+                                <div v-if="cfm.body_type==='json'" style="text-align:right;margin-top:2px"><DataFactoryDropdown /></div>
+                                <KVEditor v-if="cfm.body_type==='form'" v-model="cfm.body_form" />
+                                <el-input v-if="cfm.body_type==='text'" v-model="cfm.body_text" type="textarea" :rows="5" />
+                                <div v-if="cfm.body_type==='text'" style="text-align:right;margin-top:2px"><DataFactoryDropdown /></div>
+                            </el-tab-pane>
+                        </el-tabs>
+                    </el-form>
+                    <template #footer><el-button @click="showCaseDlg=false">取消</el-button><el-button type="primary" :loading="savingCaseDlg" @click="saveCaseDlg">{{editingId?'更新':'创建'}}</el-button></template>
+                </el-dialog>
+            </template>
+        </div>`,
+        data(){
+            return{
+                store:window.NC, s:window.NC,
+                methods:['GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS'],
+                tab:'p',
+                fm:this.defForm(),
+                sending:false, resp:null,
+                showSave:false, saveName:'', savingCase:false,
+                cases:[], casesLoading:false,
+                showCaseDlg:false, editingId:null, savingCaseDlg:false,
+                cfm:this.defForm()
+            }
+        },
+        mounted(){this.fetchCases();this.checkFill()},
+        watch:{'store.project.id'(){this.fetchCases();this.resp=null}},
+        methods:{
+            st:stCodeType, fmt:fmtBody, isHtml:isHtml,
+            defForm(){return{method:'GET',url:'',headers:[],params:[],body_type:'none',body_text:'',body_form:[],name:''}},
+            resetForm(){this.fm=this.defForm();this.resp=null},
+            checkFill(){
+                const d=sessionStorage.getItem('nc_fill');
+                if(d){sessionStorage.removeItem('nc_fill');try{const o=JSON.parse(d);this.$nextTick(()=>this.fillFrom(o))}catch(e){}}
+            },
+            fillFrom(c){
+                this.fm.method=c.method||'GET';this.fm.url=c.url||'';
+                const hd=[];if(c.headers&&typeof c.headers==='object')Object.entries(c.headers).forEach(([k,v])=>hd.push({key:k,value:String(v)}));
+                this.fm.headers=hd;
+                const pp=[];if(c.params&&typeof c.params==='object')Object.entries(c.params).forEach(([k,v])=>pp.push({key:k,value:String(v)}));
+                this.fm.params=pp;
+                if(c.body){this.fm.body_type=c.body_type||'json';
+                    if(this.fm.body_type==='json')this.fm.body_text=typeof c.body==='object'?JSON.stringify(c.body,null,2):String(c.body);
+                    else if(this.fm.body_type==='form'){const bf=[];if(typeof c.body==='object')Object.entries(c.body).forEach(([k,v])=>bf.push({key:k,value:String(v)}));this.fm.body_form=bf}
+                    else this.fm.body_text=String(c.body);
+                }else{this.fm.body_type='none';this.fm.body_text='';this.fm.body_form=[]}
+                this.tab='p';this.resp=null;ElMsg.success('已填充到测试表单');this.$router.push('/test');
+            },
+            async fetchCases(){
+                if(!this.store.project)return;
+                this.casesLoading=true;
+                try{const r=await http.get('/case',{params:{project_id:this.store.project.id}});if(r.code===200)this.cases=r.data||[]}catch(e){}finally{this.casesLoading=false}
+            },
+            async sendReq(){
+                if(!this.fm.url){ElMsg.warning('请输入URL');return}
+                this.sending=true;this.resp=null;
+                try{
+                    const p=buildCasePayload(this.store.project.id,{...this.fm,name:'_tmp_'+Date.now()});
+                    const sr=await http.post('/case',p);
+                    if(sr.code===201||sr.code===200){
+                        const dr=await http.post('/case/'+sr.data.id+'/debug',{});
+                        if(dr.code===200)this.resp=dr.data;else ElMsg.error(dr.msg||'执行失败');
+                        http.delete('/case/'+sr.data.id).catch(()=>{});
+                    }else{ElMsg.error(sr.msg||'保存失败')}
+                }catch(e){
+                    const m=e.response?.data?.msg||'请求失败';
+                    this.resp={success:false,status_code:e.response?.status||0,response_body:{error:m},response_headers:{},response_time:0};
+                    ElMsg.error(m);
+                }finally{this.sending=false}
+            },
+            async doSave(){
+                if(!this.saveName.trim()){ElMsg.warning('请输入名称');return}
+                this.savingCase=true;
+                try{
+                    const p=buildCasePayload(this.store.project.id,{...this.fm,name:this.saveName.trim()});
+                    const r=await http.post('/case',p);
+                    if(r.code===201){ElMsg.success('保存成功');this.showSave=false;this.saveName='';await this.fetchCases()}
+                    else{ElMsg.error(r.msg||'保存失败')}
+                }catch(e){ElMsg.error(e.response?.data?.msg||'保存失败')}finally{this.savingCase=false}
+            },
+            openNewCase(){this.editingId=null;this.cfm=this.defForm();this.showCaseDlg=true},
+            editCase(row){
+                this.editingId=row.id;
+                const f=this.defForm();f.name=row.name;f.method=row.method;f.url=row.url;
+                const hd=[];if(row.headers&&typeof row.headers==='object')Object.entries(row.headers).forEach(([k,v])=>{if(k)hd.push({key:k,value:String(v)})});
+                f.headers=hd;
+                const pp=[];if(row.params&&typeof row.params==='object')Object.entries(row.params).forEach(([k,v])=>{if(k)pp.push({key:k,value:String(v)})});
+                f.params=pp;
+                if(row.body){f.body_type=row.body_type||'json';
+                    if(f.body_type==='json')f.body_text=typeof row.body==='object'?JSON.stringify(row.body,null,2):String(row.body);
+                    else if(f.body_type==='form'){const bf=[];if(typeof row.body==='object')Object.entries(row.body).forEach(([k,v])=>bf.push({key:k,value:String(v)}));f.body_form=bf}
+                    else f.body_text=String(row.body);
+                }
+                this.cfm=f;this.showCaseDlg=true;
+            },
+            async saveCaseDlg(){
+                if(!this.cfm.name.trim()){ElMsg.warning('请输入用例名称');return}
+                if(!this.cfm.url){ElMsg.warning('请输入URL');return}
+                this.savingCaseDlg=true;
+                try{
+                    const p=buildCasePayload(this.store.project.id,this.cfm);
+                    let r;const id=this.editingId;
+                    if(id)r=await http.put('/case/'+id,p);else r=await http.post('/case',p);
+                    if(r.code===200||r.code===201){
+                        ElMsg.success(id?'更新成功':'创建成功');this.showCaseDlg=false;this.editingId=null;
+                        await this.fetchCases();
+                    }else{ElMsg.error(r.msg||'保存失败')}
+                }catch(e){ElMsg.error(e.response?.data?.msg||'保存失败')}finally{this.savingCaseDlg=false}
+            },
+            async runCase(row){
+                try{const r=await http.post('/case/'+row.id+'/debug',{});if(r.code===200)this.resp=r.data;else ElMsg.error(r.msg||'执行失败')}
+                catch(e){ElMsg.error(e.response?.data?.msg||'执行失败')}
+            },
+            async delCase(row){
+                try{
+                    await ElMsgBox.confirm('删除用例「'+row.name+'」？','确认',{type:'warning',confirmButtonText:'删除',cancelButtonText:'取消'});
+                    const r=await http.delete('/case/'+row.id);if(r.code===200){ElMsg.success('已删除');await this.fetchCases()}
+                }catch(e){if(e!=='cancel')ElMsg.error(e.response?.data?.msg||'删除失败')}
+            }
+        }
+    };
+
+    // -------- Case Management --------
+    const CaseManage = {
+        components:{KVEditor},
+        template:`<div>
+            <div class="page-hd"><h3>用例管理</h3>
+                <div class="flex gap8">
+                    <el-input v-model="kw" placeholder="搜索..." size="small" clearable style="width:180px" />
+                    <el-button size="small" type="primary" @click="openNew">+ 新建用例</el-button>
+                    <el-button size="small" @click="batchRun" :disabled="selIds.length===0" :loading="batRunning">批量运行 ({{selIds.length}})</el-button>
+                </div>
+            </div>
+
+            <template v-if="!s.project">
+                <el-card><div class="empty-box"><p>请先选择项目</p><el-button type="primary" style="margin-top:10px" @click="$router.push('/')">选择项目</el-button></div></el-card>
+            </template>
+            <template v-else>
+                <el-card class="card-mb">
+                    <template v-if="loading"><div class="empty-box"><p>加载中...</p></div></template>
+                    <template v-else-if="filtered.length===0"><div class="empty-box"><p>{{kw?'未匹配':'暂无用例'}}</p></div></template>
+                    <el-table v-else :data="filtered" stripe @selection-change="onSel">
+                        <el-table-column type="selection" width="40" />
+                        <el-table-column label="方法" width="80"><template #default="{row}"><el-tag :class="'mtag '+row.method" class="mtag" size="small" effect="plain">{{row.method}}</el-tag></template></el-table-column>
+                        <el-table-column label="名称" prop="name" min-width="160" show-overflow-tooltip />
+                        <el-table-column label="URL" min-width="260" show-overflow-tooltip><template #default="{row}">{{row.url}}</template></el-table-column>
+                        <el-table-column label="创建时间" width="170"><template #default="{row}">{{fmt(row.create_time)}}</template></el-table-column>
+                        <el-table-column label="操作" width="210" fixed="right">
+                            <template #default="{row}">
+                                <el-button size="small" text type="primary" @click="runOne(row)">运行</el-button>
+                                <el-button size="small" text @click="editOne(row)">编辑</el-button>
+                                <el-button size="small" text type="danger" @click="delOne(row)">删除</el-button>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                </el-card>
+
+                <!-- Run result -->
+                <el-card v-if="runResp" class="card-mb" :style="{borderLeft:'3px solid '+(runResp.success?'#67c23a':'#f56c6c')}">
+                    <template #header>
+                        <div class="flex gap8" style="align-items:center">
+                            <b>运行结果</b>
+                            <el-tag v-if="runResp.status_code" :type="st(runResp.status_code)">{{runResp.status_code}}</el-tag>
+                            <span v-if="runResp.response_time" class="c-gray" style="font-size:13px">{{(runResp.response_time*1000).toFixed(0)}} ms</span>
+                            <el-tag :type="runResp.success?'success':'danger'" size="small">{{runResp.success?'通过':'失败'}}</el-tag>
+                        </div>
+                        <el-alert v-if="runResp.error" :title="runResp.error" type="error" show-icon :closable="false" style="margin-top:6px" />
+                        <el-alert v-else-if="runResp.response_body && isHtml(fmtBody(runResp.response_body))" title="响应内容为 HTML，请检查目标 URL 是否为 API 接口" type="warning" show-icon :closable="false" style="margin-top:6px" />
+                    </template>
+                    <el-tabs><el-tab-pane label="Body"><pre class="resp-body">{{fmt(runResp.response_body)}}</pre></el-tab-pane>
+                    <el-tab-pane label="Headers"><pre class="resp-body">{{fmt(runResp.response_headers)}}</pre></el-tab-pane></el-tabs>
+                </el-card>
+
+                <!-- Batch run result -->
+                <el-card v-if="batchResult" class="card-mb">
+                    <template #header>
+                        <div class="flex gap8" style="align-items:center">
+                            <b>批量运行结果</b>
+                            <el-tag :type="batchResult.pass_rate>=100?'success':batchResult.pass_rate>=50?'warning':'danger'">{{batchResult.pass_rate}}%</el-tag>
+                            <span class="c-gray" style="font-size:13px">通过 {{batchResult.passed}} / 共 {{batchResult.total}}</span>
+                        </div>
+                    </template>
+                    <el-table :data="batchResult.details||[]" size="small" stripe>
+                        <el-table-column type="expand">
+                            <template #default="{row}">
+                                <div style="padding:8px 12px">
+                                    <!-- 响应体预览 -->
+                                    <div v-if="row.response_body_preview" style="margin-bottom:10px">
+                                        <div style="font-weight:600;font-size:13px;color:#303133;margin-bottom:4px">响应体预览</div>
+                                        <pre class="resp-body" style="max-height:300px;font-size:12px">{{row.response_body_preview}}</pre>
+                                    </div>
+                                    <!-- 断言详情 -->
+                                    <div v-if="row.assert_results && row.assert_results.length>0" style="margin-bottom:10px">
+                                        <div style="font-weight:600;font-size:13px;color:#303133;margin-bottom:4px">断言详情</div>
+                                        <div v-for="(ar,ai) in row.assert_results" :key="ai" style="padding:4px 8px;margin-bottom:3px;border-radius:4px;font-size:13px;background:#f5f7fa;border-left:3px solid #e4e7ed"
+                                            :style="{'border-left-color': ar.passed?'#67c23a':'#f56c6c'}">
+                                            <div class="flex gap8" style="align-items:center">
+                                                <el-tag :type="ar.passed?'success':'danger'" size="small" style="flex-shrink:0">{{ar.passed?'通过':'失败'}}</el-tag>
+                                                <span>{{ar.assertion||'未知断言'}}</span>
+                                            </div>
+                                            <div style="margin-top:2px;color:#606266;font-size:12px">
+                                                期望值: <code style="background:#e8e8e8;padding:1px 5px;border-radius:3px">{{ar.expected}}</code>
+                                                &nbsp;实际值: <code style="background:#e8e8e8;padding:1px 5px;border-radius:3px">{{ar.actual}}</code>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- 错误信息 -->
+                                    <div v-if="row.error" style="margin-bottom:4px">
+                                        <div style="font-weight:600;font-size:13px;color:#f56c6c;margin-bottom:4px">错误信息</div>
+                                        <div style="color:#f56c6c;font-size:13px;background:#fef0f0;padding:6px 10px;border-radius:4px">{{row.error}}</div>
+                                    </div>
+                                </div>
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="用例名称" prop="name" min-width="180" />
+                        <el-table-column label="状态码" width="80"><template #default="{row}"><el-tag :type="st(row.status_code)" size="small">{{row.status_code}}</el-tag></template></el-table-column>
+                        <el-table-column label="耗时" width="100"><template #default="{row}">{{row.response_time||0}}ms</template></el-table-column>
+                        <el-table-column label="结果" width="70"><template #default="{row}"><el-tag :type="row.passed?'success':'danger'" size="small">{{row.passed?'通过':'失败'}}</el-tag></template></el-table-column>
+                        <el-table-column label="错误" min-width="200" show-overflow-tooltip>
+                            <template #default="{row}">
+                                <span v-if="row.error" style="color:#f56c6c">{{row.error}}</span>
+                                <span v-else style="color:#909399">-</span>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                </el-card>
+
+                <!-- New/Edit dialog -->
+                <el-dialog v-model="showDlg" :title="editId?'编辑用例':'新建用例'" width="680px">
+                    <el-form :model="cfm" label-width="70px">
+                        <el-form-item label="名称"><el-input v-model="cfm.name" /></el-form-item>
+                        <div class="flex gap8" style="margin-bottom:12px">
+                            <el-select v-model="cfm.method" style="width:110px">
+                                <el-option v-for="m in methods" :key="m" :label="m" :value="m" />
+                            </el-select>
+                            <el-input v-model="cfm.url" placeholder="URL" class="flex-1" />
+                        </div>
+                        <el-tabs type="border-card">
+                            <el-tab-pane label="Headers"><KVEditor v-model="cfm.headers" /></el-tab-pane>
+                            <el-tab-pane label="Params"><KVEditor v-model="cfm.params" /></el-tab-pane>
+                            <el-tab-pane label="Body">
+                                <el-radio-group v-model="cfm.body_type" style="margin-bottom:8px" size="small">
+                                    <el-radio-button value="none">none</el-radio-button>
+                                    <el-radio-button value="json">JSON</el-radio-button>
+                                    <el-radio-button value="form">Form</el-radio-button>
+                                    <el-radio-button value="text">Text</el-radio-button>
+                                </el-radio-group>
+                                <el-input v-if="cfm.body_type==='json'" v-model="cfm.body_text" type="textarea" :rows="5" placeholder='{"key":"value"}' style="font-family:monospace" />
+                                <div v-if="cfm.body_type==='json'" style="text-align:right;margin-top:2px"><DataFactoryDropdown /></div>
+                                <KVEditor v-if="cfm.body_type==='form'" v-model="cfm.body_form" />
+                                <el-input v-if="cfm.body_type==='text'" v-model="cfm.body_text" type="textarea" :rows="5" />
+                                <div v-if="cfm.body_type==='text'" style="text-align:right;margin-top:2px"><DataFactoryDropdown /></div>
+                            </el-tab-pane>
+                        </el-tabs>
+                    </el-form>
+                    <template #footer><el-button @click="showDlg=false">取消</el-button><el-button type="primary" :loading="saving" @click="saveCase">保存</el-button></template>
+                </el-dialog>
+            </template>
+        </div>`,
+        data(){
+            return{
+                store:window.NC, s:window.NC,
+                methods:['GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS'],
+                cases:[], loading:false, kw:'',
+                selIds:[], showDlg:false, editId:null, saving:false,
+                runResp:null, batchResult:null, batRunning:false,
+                cfm:{name:'',method:'GET',url:'',headers:[],params:[],body_type:'none',body_text:'',body_form:[]}
+            }
+        },
+        computed:{filtered(){
+            if(!this.kw)return this.cases;
+            const q=this.kw.toLowerCase();
+            return this.cases.filter(c=>c.name.toLowerCase().includes(q)||c.url.toLowerCase().includes(q));
+        }},
+        mounted(){this.fetch()},
+        watch:{'store.project.id'(){this.fetch();this.runResp=null;this.batchResult=null}},
+        methods:{
+            fmt:fmtTime,st:stCodeType,fmtBody:fmtBody,isHtml:isHtml,
+            async fetch(){
+                if(!this.store.project)return;
+                this.loading=true;
+                try{const r=await http.get('/case',{params:{project_id:this.store.project.id}});if(r.code===200)this.cases=r.data||[]}catch(e){}finally{this.loading=false}
+            },
+            onSel(sel){this.selIds=sel.map(r=>r.id)},
+            openNew(){this.editId=null;this.cfm={name:'',method:'GET',url:'',headers:[],params:[],body_type:'none',body_text:'',body_form:[]};this.showDlg=true},
+            editOne(row){
+                this.editId=row.id;
+                const f={name:row.name,method:row.method,url:row.url,headers:[],params:[],body_type:'none',body_text:'',body_form:[]};
+                if(row.headers&&typeof row.headers==='object')Object.entries(row.headers).forEach(([k,v])=>{if(k)f.headers.push({key:k,value:String(v)})});
+                if(row.params&&typeof row.params==='object')Object.entries(row.params).forEach(([k,v])=>{if(k)f.params.push({key:k,value:String(v)})});
+                if(row.body){f.body_type=row.body_type||'json';
+                    if(f.body_type==='json')f.body_text=typeof row.body==='object'?JSON.stringify(row.body,null,2):String(row.body);
+                    else if(f.body_type==='form'){if(typeof row.body==='object')Object.entries(row.body).forEach(([k,v])=>f.body_form.push({key:k,value:String(v)}))}
+                    else f.body_text=String(row.body);
+                }
+                this.cfm=f;this.showDlg=true;
+            },
+            async saveCase(){
+                if(!this.cfm.name.trim()){ElMsg.warning('请输入名称');return}
+                if(!this.cfm.url){ElMsg.warning('请输入URL');return}
+                this.saving=true;
+                try{
+                    const p=buildCasePayload(this.store.project.id,this.cfm);
+                    let r;if(this.editId)r=await http.put('/case/'+this.editId,p);else r=await http.post('/case',p);
+                    if(r.code===200||r.code===201){
+                        ElMsg.success(this.editId?'更新成功':'创建成功');this.showDlg=false;this.editId=null;await this.fetch();
+                    }else{ElMsg.error(r.msg||'保存失败')}
+                }catch(e){ElMsg.error(e.response?.data?.msg||'保存失败')}finally{this.saving=false}
+            },
+            async runOne(row){
+                this.runResp=null;
+                try{const r=await http.post('/case/'+row.id+'/debug',{});if(r.code===200)this.runResp=r.data;else ElMsg.error(r.msg||'执行失败')}
+                catch(e){ElMsg.error(e.response?.data?.msg||'执行失败')}
+            },
+            async delOne(row){
+                try{
+                    await ElMsgBox.confirm('删除用例「'+row.name+'」？','确认',{type:'warning',confirmButtonText:'删除',cancelButtonText:'取消'});
+                    const r=await http.delete('/case/'+row.id);if(r.code===200){ElMsg.success('已删除');await this.fetch()}
+                }catch(e){if(e!=='cancel')ElMsg.error(e.response?.data?.msg||'删除失败')}
+            },
+            async batchRun(){
+                if(this.selIds.length===0){ElMsg.warning('请选择用例');return}
+                this.batRunning=true;this.batchResult=null;
+                try{
+                    // 1. Create suite
+                    const sr=await http.post('/suite',{
+                        project_id:this.store.project.id,
+                        name:'批量运行_'+Date.now(),
+                        case_ids:this.selIds
+                    });
+                    if(sr.code===201||sr.code===200){
+                        const suiteId=sr.data.id;
+                        // 2. Run suite
+                        const rr=await http.post('/suite/'+suiteId+'/run',{});
+                        if(rr.code===200){
+                            const taskId=rr.data.task_id;
+                            // 3. Poll for result (up to 30s)
+                            let poll=0,maxPoll=30,taskData=null;
+                            while(poll<maxPoll){
+                                await new Promise(r=>setTimeout(r,1000));
+                                const tr=await http.get('/task/'+taskId);
+                                if(tr.code===200&&(tr.data.status==='success'||tr.data.status==='failed')){
+                                    taskData=tr.data;
+                                    break;
+                                }
+                                poll++;
+                            }
+                            if(taskData&&taskData.result){
+                                const r=taskData.result;
+                                this.batchResult={
+                                    total:r.total||0,passed:r.passed||0,failed:r.failed||0,
+                                    pass_rate:r.total?((r.passed||0)/r.total*100).toFixed(1):0,
+                                    details:r.details||[]
+                                };
+                                ElMsg.success('批量运行完成');
+                            }else{ElMsg.warning('运行超时或失败，请查看任务列表')}
+                            // 4. Clean up suite
+                            http.delete('/suite/'+suiteId).catch(()=>{});
+                        }else{ElMsg.error(rr.msg||'执行失败')}
+                    }else{ElMsg.error(sr.msg||'创建集合失败')}
+                }catch(e){ElMsg.error(e.response?.data?.msg||'批量运行失败')
+                }finally{this.batRunning=false}
+            }
+        }
+    };
+
+    // -------- AI Generate --------
+    const AiGenerate = {
+        template:`<div>
+            <h3 class="page-hd" style="margin-bottom:12px">AI 生成测试用例</h3>
+            <template v-if="!s.project">
+                <el-card><div class="empty-box"><p>请先选择项目</p><el-button type="primary" style="margin-top:10px" @click="$router.push('/')">选择项目</el-button></div></el-card>
+            </template>
+            <template v-else>
+                <!-- Input -->
+                <el-card class="card-mb">
+                    <el-form label-width="80px">
+                        <el-form-item label="接口 URL"><el-input v-model="fm.api_url" placeholder="如 /api/user/login（可选）" clearable /></el-form-item>
+                        <el-form-item label="请求方法"><el-select v-model="fm.api_method" style="width:110px"><el-option v-for="m in methods" :key="m" :label="m" :value="m" /></el-select></el-form-item>
+                        <el-form-item label="提示词"><el-input v-model="fm.prompt" type="textarea" :rows="5" placeholder="描述要测试的接口，例如：&#10;为用户登录接口生成测试用例，涵盖正常、异常、边界情况" /></el-form-item>
+                        <el-form-item>
+                            <el-button type="primary" :loading="generating" @click="generate">
+                                生成用例
+                            </el-button>
+                            <el-button @click="showHist=!showHist">{{showHist?'隐藏':'查看'}}历史</el-button>
+                        </el-form-item>
+                    </el-form>
+                </el-card>
+
+                <!-- History -->
+                <el-card v-if="showHist" class="card-mb">
+                    <template #header>生成历史</template>
+                    <template v-if="hist.length===0"><div class="empty-box"><p>暂无记录</p></div></template>
+                    <el-table v-else :data="hist" stripe size="small" @row-click="viewRecord">
+                        <el-table-column label="提示词" prop="prompt" min-width="280" show-overflow-tooltip />
+                        <el-table-column label="数量" width="60" align="center"><template #default="{row}">{{row.case_count||0}}</template></el-table-column>
+                        <el-table-column label="状态" width="70"><template #default="{row}"><el-tag :type="row.status==='success'?'success':row.status==='failed'?'danger':'info'" size="small">{{row.status==='success'?'成功':row.status==='failed'?'失败':'生成中'}}</el-tag></template></el-table-column>
+                        <el-table-column label="时间" width="170"><template #default="{row}">{{fmt(row.create_time)}}</template></el-table-column>
+                    </el-table>
+                </el-card>
+
+                <!-- Results -->
+                <el-card v-if="results.length>0" class="card-mb">
+                    <template #header><div class="flex gap8" style="align-items:center"><b>生成结果（{{results.length}} 条）</b></div></template>
+                    <el-table :data="results" stripe size="small">
+                        <el-table-column label="方法" width="80"><template #default="{row}"><el-tag :class="'mtag '+(row.method||'GET')" class="mtag" size="small" effect="plain">{{row.method||'GET'}}</el-tag></template></el-table-column>
+                        <el-table-column label="用例名称" min-width="160"><template #default="{row}">{{row.name||'未命名'}}</template></el-table-column>
+                        <el-table-column label="URL" min-width="260" show-overflow-tooltip><template #default="{row}">{{row.url||'-'}}</template></el-table-column>
+                        <el-table-column label="状态码断言" width="100"><template #default="{row}">{{row.assertions?.[0]?.expected||200}}</template></el-table-column>
+                        <el-table-column label="操作" width="160" fixed="right">
+                            <template #default="{row,$index}">
+                                <el-button size="small" text type="primary" @click="importOne($index)">导入到用例库</el-button>
+                                <el-button size="small" text type="primary" @click="fillForm(row)">填充测试</el-button>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                </el-card>
+            </template>
+        </div>`,
+        data(){
+            return{
+                store:window.NC, s:window.NC,
+                methods:['GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS'],
+                fm:{api_url:'/api/endpoint',api_method:'GET',prompt:''},
+                generating:false, results:[], recId:null,
+                hist:[], showHist:false
+            }
+        },
+        watch:{showHist(v){if(v)this.fetchHist()}},
+        methods:{
+            fmt:fmtTime,
+            async fetchHist(){
+                if(!this.store.project)return;
+                try{const r=await http.get('/ai/record',{params:{project_id:this.store.project.id}});if(r.code===200)this.hist=r.data||[]}catch(e){}
+            },
+            async generate(){
+                if(!this.fm.prompt.trim()){ElMsg.warning('请输入提示词');return}
+                this.generating=true;this.results=[];this.recId=null;
+                try{
+                    const r=await http.post('/ai/generate/api-case',{
+                        project_id:this.store.project.id,
+                        api_url:this.fm.api_url.trim(),
+                        api_method:this.fm.api_method,
+                        prompt:this.fm.prompt.trim()
+                    });
+                    if(r.code===200){this.results=r.data.cases||[];this.recId=r.data.record_id;ElMsg.success(r.msg||'生成成功')}
+                    else{ElMsg.error(r.msg||'生成失败')}
+                }catch(e){
+                    const d=e.response?.data;
+                    if(d&&d.data&&d.data.cases&&d.data.cases.length>0){this.results=d.data.cases;this.recId=d.data.record_id;ElMsg.warning(d.msg||'部分生成')}
+                    else{ElMsg.error(e.response?.data?.msg||'生成失败:'+e.message)}
+                }finally{this.generating=false}
+            },
+            async importOne(idx){
+                if(!this.recId){ElMsg.warning('无生成记录');return}
+                try{
+                    const r=await http.post('/ai/import',{record_id:this.recId,case_ids_to_import:[idx]});
+                    if(r.code===201){ElMsg.success(r.msg||'导入成功');if(this.showHist)this.fetchHist()}
+                    else{ElMsg.error(r.msg||'导入失败')}
+                }catch(e){ElMsg.error(e.response?.data?.msg||'导入失败')}
+            },
+            fillForm(c){
+                const data={
+                    method:c.method,url:c.url,
+                    headers:c.headers||{},params:c.params||{},
+                    body:c.body||null,body_type:c.body_type||'json'
+                };
+                sessionStorage.setItem('nc_fill',JSON.stringify(data));
+                ElMsg.success('已保存，跳转到测试页');
+                this.$router.push('/test');
+            },
+            viewRecord(row){
+                ElMsg.info('记录 #'+row.id+': '+(row.case_count||0)+' 条');
+            }
+        }
+    };
+
+    // ===================== Web Test - Script Management =====================
+    const WEB_ACTIONS = [
+        {value:'goto',label:'goto - 跳转',fields:{url:{label:'URL',ph:'https://...'},timeout:{label:'超时(ms)',ph:'30000',opt:true}}},
+        {value:'click',label:'click - 点击',fields:{selector:{label:'CSS选择器',ph:'button.submit'},timeout:{label:'超时(ms)',ph:'10000',opt:true}}},
+        {value:'fill',label:'fill - 输入文本',fields:{selector:{label:'CSS选择器',ph:'#username'},value:{label:'输入值',ph:'{{var}}'}}},
+        {value:'select',label:'select - 下拉选择',fields:{selector:{label:'CSS选择器',ph:'select.country'},value:{label:'选择值',ph:'CN'}}},
+        {value:'hover',label:'hover - 悬停',fields:{selector:{label:'CSS选择器',ph:'.menu-item'}}},
+        {value:'wait_for_selector',label:'wait - 等待元素',fields:{selector:{label:'CSS选择器',ph:'.loading-finish'},timeout:{label:'超时(ms)',ph:'10000'}}},
+        {value:'assert_text',label:'assert - 断言文本',fields:{selector:{label:'CSS选择器',ph:'.welcome'},expected:{label:'期望文本',ph:'欢迎回来'}}},
+        {value:'assert_title',label:'assert - 断言标题',fields:{expected:{label:'期望标题',ph:'Dashboard'}}},
+        {value:'assert_url',label:'assert - 断言URL',fields:{expected:{label:'期望URL',ph:'/dashboard'}}},
+        {value:'screenshot',label:'screenshot - 截图',fields:{name:{label:'截图名称',ph:'page_state',opt:true}}},
+        {value:'execute_script',label:'js - 执行脚本',fields:{script:{label:'JS 代码',ph:'document.title'}}},
+        {value:'sleep',label:'sleep - 等待',fields:{value:{label:'秒数',ph:'1'}}},
+    ];
+    const WEB_ACTION_MAP = {};
+    WEB_ACTIONS.forEach(a=>WEB_ACTION_MAP[a.value]=a);
+
+    function emptyStep(){ return {action:'goto',selector:'',value:'',expected:'',url:'',timeout:'',script:'',name:''} }
+
+    const WebScripts = {
+        template:`<div>
+            <div class="page-hd"><h3>Web 测试脚本</h3>
+                <div class="flex gap8">
+                    <el-input v-model="kw" placeholder="搜索..." size="small" clearable style="width:180px" />
+                    <el-button type="primary" size="small" @click="createNew">+ 新建脚本</el-button>
+                </div>
+            </div>
+            <template v-if="!s.project">
+                <el-card><div class="empty-box"><p>请先选择项目</p><el-button type="primary" style="margin-top:10px" @click="$router.push('/')">选择项目</el-button></div></el-card>
+            </template>
+            <template v-else>
+                <el-card class="card-mb">
+                    <template v-if="loading"><div class="empty-box"><p>加载中...</p></div></template>
+                    <template v-else-if="list.length===0"><div class="empty-box"><p>暂无脚本，点击右上角新建</p></div></template>
+                    <el-table v-else :data="filtered" stripe size="small">
+                        <el-table-column label="名称" prop="name" min-width="160" show-overflow-tooltip />
+                        <el-table-column label="起始URL" min-width="240" show-overflow-tooltip><template #default="{row: r}">{{r.url}}</template></el-table-column>
+                        <el-table-column label="步骤数" width="70" align="center"><template #default="{row: r}">{{(r.steps||[]).length}}</template></el-table-column>
+                        <el-table-column label="更新时间" width="170"><template #default="{row: r}">{{fmt(r.update_time)}}</template></el-table-column>
+                        <el-table-column label="操作" width="240" fixed="right">
+                            <template #default="{row: r}">
+                                <el-button size="small" text type="primary" @click="edit(r)">编辑</el-button>
+                                <el-button size="small" text type="primary" @click="runDebug(r)">调试</el-button>
+                                <el-button size="small" text @click="showTasks(r)">记录</el-button>
+                                <el-button size="small" text type="danger" @click="del(r)">删除</el-button>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                </el-card>
+
+                <el-dialog v-model="dlgDebug" :title="'调试: '+(debugScript?.name||'')" width="80%" top="5vh">
+                    <template v-if="debugLoading"><div class="empty-box"><p>正在执行...</p></div></template>
+                    <template v-else-if="debugResult">
+                        <el-tag :type="debugResult.success?'success':'danger'" size="large">
+                            {{debugResult.success?'通过':'失败'}} - {{debugResult.total_time_ms}}ms
+                        </el-tag>
+                        <el-table :data="debugResult.steps||[]" size="small" stripe style="margin-top:10px">
+                            <el-table-column label="#" width="40"><template #default="{row: r}">{{r.index+1}}</template></el-table-column>
+                            <el-table-column label="动作" width="120"><template #default="{row: r}">{{r.action}}</template></el-table-column>
+                            <el-table-column label="结果" width="60"><template #default="{row: r}"><el-tag :type="r.success?'success':'danger'" size="small">{{r.success?'通过':'失败'}}</el-tag></template></el-table-column>
+                            <el-table-column label="错误" min-width="200"><template #default="{row: r}">{{r.error||'-'}}</template></el-table-column>
+                            <el-table-column label="截图" width="100">
+                                <template #default="{row: r}">
+                                    <el-button v-if="r.screenshot" size="small" text type="primary" @click="viewScreenshot(r.screenshot)">查看</el-button>
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                    </template>
+                    <template #footer><el-button @click="dlgDebug=false">关闭</el-button></template>
+                </el-dialog>
+
+                <el-dialog v-model="dlgScreenshot" title="截图" width="60%">
+                    <img v-if="screenshotImg" :src="'data:image/png;base64,'+screenshotImg" style="max-width:100%;border:1px solid #ddd" />
+                </el-dialog>
+            </template>
+        </div>`,
+        data(){return{store:window.NC,s:window.NC,kw:'',list:[],loading:false,
+            dlgDebug:false,debugScript:null,debugLoading:false,debugResult:null,
+            dlgScreenshot:false,screenshotImg:''}},
+        computed:{filtered(){
+            if(!this.kw)return this.list;const q=this.kw.toLowerCase();
+            return this.list.filter(r=>(r.name||'').toLowerCase().includes(q)||(r.url||'').toLowerCase().includes(q));
+        }},
+        mounted(){this.fetch()},
+        watch:{'store.project.id'(){this.fetch()}},
+        methods:{
+            fmt:fmtTime,
+            async fetch(){
+                if(!this.store.project)return;this.loading=true;
+                try{
+                    const rr=await http.get('/web/script',{params:{project_id:this.store.project.id,per_page:100}});
+                    if(rr.code===200)this.list=(rr.data.items||[]).filter(Boolean);
+                }catch(e){}finally{this.loading=false}
+            },
+            createNew(){this.$router.push('/web/editor')},
+            edit(r){this.$router.push('/web/editor/'+r.id)},
+            async del(r){
+                try{
+                    await ElMsgBox.confirm('删除脚本「'+r.name+'」？','确认',{type:'warning',confirmButtonText:'删除',cancelButtonText:'取消'});
+                    const x=await http.delete('/web/script/'+r.id);if(x.code===200){ElMsg.success('已删除');await this.fetch()}
+                }catch(e){if(e!=='cancel')ElMsg.error(e.response?.data?.msg||'删除失败')}
+            },
+            async runDebug(r){
+                this.dlgDebug=true;this.debugScript=r;this.debugLoading=true;this.debugResult=null;
+                try{
+                    const x=await http.post('/web/script/'+r.id+'/debug',{});
+                    if(x.code===200)this.debugResult=x.data;else ElMsg.error(x.msg||'执行失败')
+                }catch(e){ElMsg.error(e.response?.data?.msg||'执行失败')}finally{this.debugLoading=false}
+            },
+            showTasks(r){this.$router.push('/web/tasks/'+r.id)},
+            viewScreenshot(b64){this.screenshotImg=b64;this.dlgScreenshot=true}
+        }
+    };
+
+    // ===================== Web Test - Script Editor =====================
+    const WebEditor = {
+        components:{KVEditor},
+        template:`<div>
+            <div class="page-hd">
+                <h3>{{isNew?'新建脚本':'编辑脚本'}}</h3>
+                <div class="flex gap8">
+                    <el-button @click="goBack">返回</el-button>
+                    <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+                    <el-button :loading="debugging" @click="debugRun" v-if="!isNew">调试运行</el-button>
+                </div>
+            </div>
+            <template v-if="!s.project">
+                <el-card><div class="empty-box"><p>请先选择项目</p></div></el-card>
+            </template>
+            <template v-else>
+                <el-card class="card-mb">
+                    <el-form :model="form" label-width="70px">
+                        <el-row :gutter="16">
+                            <el-col :span="12"><el-form-item label="脚本名称"><el-input v-model="form.name" placeholder="如：登录流程测试" /></el-form-item></el-col>
+                            <el-col :span="12"><el-form-item label="起始URL"><el-input v-model="form.url" placeholder="https://example.com/login" /></el-form-item></el-col>
+                        </el-row>
+                        <el-form-item label="描述"><el-input v-model="form.desc" type="textarea" :rows="2" placeholder="可选" /></el-form-item>
+                        <el-form-item label="变量">
+                            <KVEditor v-model="form.vars" />
+                            <span style="font-size:12px;color:#909399">可在步骤中使用 {{变量名}} 引用</span>
+                        </el-form-item>
+                    </el-form>
+                </el-card>
+
+                <el-card class="card-mb">
+                    <template #header><div class="flex gap8" style="align-items:center"><b>操作步骤 ({{form.steps.length}})</b><el-button size="small" type="primary" @click="addStep">+ 添加步骤</el-button></div></template>
+                    <div v-if="form.steps.length===0"><div class="empty-box"><p>暂无步骤，点击上方添加</p></div></div>
+                    <div v-for="(st,i) in form.steps" :key="i" style="border:1px solid #e4e7ed;border-radius:4px;padding:10px;margin-bottom:8px;background:#fafafa">
+                        <div class="flex gap8" style="align-items:center;margin-bottom:6px">
+                            <span style="font-weight:600;color:#909399;font-size:13px">#{{i+1}}</span>
+                            <el-select v-model="st.action" style="width:200px" size="small" @change="st=>resetStepFields(st)">
+                                <el-option v-for="a in actList" :key="a.value" :label="a.label" :value="a.value" />
+                            </el-select>
+                            <div class="flex-1"></div>
+                            <el-button size="small" text @click="moveStep(i,-1)" :disabled="i===0">上移</el-button>
+                            <el-button size="small" text @click="moveStep(i,1)" :disabled="i===form.steps.length-1">下移</el-button>
+                            <el-button size="small" type="danger" text @click="form.steps.splice(i,1)">删除</el-button>
+                        </div>
+                        <div class="flex gap8" style="flex-wrap:wrap">
+                            <template v-if="st.action==='goto'">
+                                <el-input v-model="st.url" placeholder="https://..." size="small" style="flex:2;min-width:200px" />
+                                <el-input v-model="st.timeout" placeholder="超时ms" size="small" style="width:120px" />
+                            </template>
+                            <template v-else-if="st.action==='click'||st.action==='hover'||st.action==='wait_for_selector'">
+                                <el-input v-model="st.selector" placeholder="CSS选择器" size="small" style="flex:2;min-width:200px" />
+                                <el-input v-model="st.timeout" placeholder="超时ms" size="small" style="width:120px" />
+                            </template>
+                            <template v-else-if="st.action==='fill'||st.action==='select'">
+                                <el-input v-model="st.selector" placeholder="CSS选择器" size="small" style="flex:1;min-width:150px" />
+                                <el-input v-model="st.value" placeholder="值" size="small" style="flex:1;min-width:150px" />
+                                <DataFactoryDropdown />
+                            </template>
+                            <template v-else-if="st.action==='assert_text'">
+                                <el-input v-model="st.selector" placeholder="CSS选择器" size="small" style="flex:1;min-width:150px" />
+                                <el-input v-model="st.expected" placeholder="期望包含的文本" size="small" style="flex:1;min-width:150px" />
+                                <DataFactoryDropdown />
+                            </template>
+                            <template v-else-if="st.action==='assert_title'||st.action==='assert_url'">
+                                <el-input v-model="st.expected" placeholder="期望包含的文本" size="small" style="flex:2;min-width:200px" />
+                            </template>
+                            <template v-else-if="st.action==='screenshot'">
+                                <el-input v-model="st.name" placeholder="截图文件名" size="small" style="flex:2;min-width:200px" />
+                            </template>
+                            <template v-else-if="st.action==='execute_script'">
+                                <el-input v-model="st.script" placeholder="JS代码，如 document.title" size="small" style="flex:2;min-width:200px" />
+                                <DataFactoryDropdown />
+                            </template>
+                            <template v-else-if="st.action==='sleep'">
+                                <el-input v-model="st.value" placeholder="秒数" size="small" style="width:120px" />
+                            </template>
+                        </div>
+                    </div>
+                </el-card>
+
+                <!-- Debug result -->
+                <el-card v-if="debugResult" class="card-mb">
+                    <template #header>
+                        <div class="flex gap8" style="align-items:center">
+                            <b>调试结果</b>
+                            <el-tag :type="debugResult.success?'success':'danger'">{{debugResult.success?'通过':'失败'}}</el-tag>
+                            <span class="c-gray" style="font-size:13px">{{debugResult.total_time_ms}}ms</span>
+                        </div>
+                    </template>
+                    <el-table :data="debugResult.steps||[]" size="small" stripe>
+                        <el-table-column label="#" width="40"><template #default="{row: r}">{{r.index+1}}</template></el-table-column>
+                        <el-table-column label="动作" width="120"><template #default="{row: r}">{{r.action}}</template></el-table-column>
+                        <el-table-column label="结果" width="60"><template #default="{row: r}"><el-tag :type="r.success?'success':'danger'" size="small">{{r.success?'通过':'失败'}}</el-tag></template></el-table-column>
+                        <el-table-column label="错误" min-width="200"><template #default="{row: r}">{{r.error||'-'}}</template></el-table-column>
+                        <el-table-column label="截图" width="80"><template #default="{row: r}"><el-button v-if="r.screenshot" size="small" text type="primary" @click="viewSS(r.screenshot)">查看</el-button></template></el-table-column>
+                    </el-table>
+                </el-card>
+
+                <el-dialog v-model="dlgSS" title="截图" width="60%">
+                    <img v-if="ssImg" :src="'data:image/png;base64,'+ssImg" style="max-width:100%;border:1px solid #ddd" />
+                </el-dialog>
+            </template>
+        </div>`,
+        data(){
+            return{
+                store:window.NC,s:window.NC,actList:WEB_ACTIONS,
+                scriptId:null,isNew:true,form:this.emptyForm(),
+                saving:false,debugging:false,debugResult:null,dlgSS:false,ssImg:''
+            }
+        },
+        mounted(){
+            const id = this.$route.params.id;
+            if(id){this.scriptId=parseInt(id);this.isNew=false;this.loadScript()}
+        },
+        methods:{
+            emptyForm(){return{name:'',url:'',desc:'',vars:[],steps:[]}},
+            resetStepFields(st){
+                // Clear fields that don't apply to the new action
+                const def=WEB_ACTION_MAP[st.action];
+                if(!def)return;
+                st.selector='';st.value='';st.expected='';st.url='';st.timeout='';st.script='';st.name='';
+            },
+            addStep(){this.form.steps.push(emptyStep())},
+            moveStep(i,d){const a=this.form.steps;const t=a[i];a[i]=a[i+d];a[i+d]=t;this.form.steps=[...a]},
+            goBack(){this.$router.push('/web')},
+            async loadScript(){
+                try{
+                    const r=await http.get('/web/script/'+this.scriptId);
+                    if(r.code===200){
+                        const d=r.data;
+                        this.form.name=d.name;
+                        this.form.url=d.url;
+                        this.form.desc=d.description||'';
+                        // Variables
+                        const vars=[];
+                        if(d.variables&&typeof d.variables==='object')Object.entries(d.variables).forEach(([k,v])=>vars.push({key:k,value:v}));
+                        this.form.vars=vars;
+                        // Steps
+                        this.form.steps=(d.steps||[]).map(s=>{
+                            const st=emptyStep();
+                            Object.assign(st,s);
+                            // ensure all fields exist
+                            ['selector','value','expected','url','timeout','script','name'].forEach(f=>{if(st[f]===undefined)st[f]=''});
+                            return st;
+                        });
+                    }else{ElMsg.error(r.msg||'加载失败')}
+                }catch(e){ElMsg.error('加载脚本失败')}
+            },
+            buildPayload(){
+                const vars={};
+                this.form.vars.forEach(v=>{if(v.key)vars[v.key.trim()]=v.value});
+                const steps=this.form.steps.map(s=>{
+                    const o={action:s.action};
+                    if(s.url)o.url=s.url;
+                    if(s.selector)o.selector=s.selector;
+                    if(s.value)o.value=s.value;
+                    if(s.expected)o.expected=s.expected;
+                    if(s.timeout)o.timeout=parseInt(s.timeout);
+                    if(s.script)o.script=s.script;
+                    if(s.name)o.name=s.name;
+                    return o;
+                });
+                return{
+                    project_id:this.store.project.id,
+                    name:this.form.name.trim(),
+                    url:this.form.url.trim(),
+                    description:this.form.desc.trim(),
+                    steps:steps,
+                    variables:Object.keys(vars).length?vars:null
+                };
+            },
+            async save(){
+                if(!this.form.name.trim()){ElMsg.warning('请输入脚本名称');return}
+                if(!this.form.url.trim()){ElMsg.warning('请输入起始URL');return}
+                if(this.form.steps.length===0){ElMsg.warning('至少需要一个步骤');return}
+                this.saving=true;
+                try{
+                    const p=this.buildPayload();
+                    let r;
+                    if(this.isNew)r=await http.post('/web/script',p);
+                    else r=await http.put('/web/script/'+this.scriptId,p);
+                    if(r.code===201||r.code===200){
+                        ElMsg.success('保存成功');
+                        if(this.isNew){this.scriptId=r.data.id;this.isNew=false}
+                    }else{ElMsg.error(r.msg||'保存失败')}
+                }catch(e){ElMsg.error(e.response?.data?.msg||'保存失败')}finally{this.saving=false}
+            },
+            async debugRun(){
+                if(this.isNew){ElMsg.warning('请先保存脚本');return}
+                this.debugging=true;this.debugResult=null;
+                try{
+                    const r=await http.post('/web/script/'+this.scriptId+'/debug',{});
+                    if(r.code===200)this.debugResult=r.data;else ElMsg.error(r.msg||'执行失败')
+                }catch(e){ElMsg.error(e.response?.data?.msg||'执行失败')}finally{this.debugging=false}
+            },
+            viewSS(b64){this.ssImg=b64;this.dlgSS=true}
+        }
+    };
+
+    // ===================== Web Test - Execution Records =====================
+    const WebTasks = {
+        template:`<div>
+            <div class="page-hd"><h3>执行记录</h3><el-button @click="$router.push('/web')">返回</el-button></div>
+            <template v-if="!s.project">
+                <el-card><div class="empty-box"><p>请先选择项目</p></div></el-card>
+            </template>
+            <template v-else>
+                <el-card class="card-mb">
+                    <template v-if="loading"><div class="empty-box"><p>加载中...</p></div></template>
+                    <template v-else-if="list.length===0"><div class="empty-box"><p>暂无执行记录</p></div></template>
+                    <el-table v-else :data="list" stripe size="small" @row-click="viewDetail" style="cursor:pointer">
+                        <el-table-column label="任务名称" prop="task_name" min-width="200" show-overflow-tooltip />
+                        <el-table-column label="脚本ID" width="80"><template #default="{row: r}">{{r.script_id}}</template></el-table-column>
+                        <el-table-column label="状态" width="80"><template #default="{row: r}"><el-tag :type="r.status==='success'?'success':r.status==='failed'?'danger':'warning'" size="small">{{r.status}}</el-tag></template></el-table-column>
+                        <el-table-column label="开始时间" width="170"><template #default="{row: r}">{{fmt(r.start_time)}}</template></el-table-column>
+                        <el-table-column label="耗时" width="80"><template #default="{row: r}">{{r.result?.total_time_ms||'-'}}ms</template></el-table-column>
+                        <el-table-column label="操作" width="80" fixed="right">
+                            <template #default="{row: r}"><el-button size="small" text type="primary" @click.stop="viewDetail(r)">详情</el-button></template>
+                        </el-table-column>
+                    </el-table>
+                </el-card>
+
+                <el-dialog v-model="dlgDetail" title="执行详情" width="80%" top="5vh">
+                    <template v-if="detail">
+                        <p><b>状态:</b> <el-tag :type="detail.status==='success'?'success':'danger'" size="small">{{detail.status}}</el-tag>
+                        <span style="margin-left:16px"><b>耗时:</b> {{detail.result?.total_time_ms||'-'}}ms</span></p>
+                        <el-table v-if="detail.result?.steps" :data="detail.result.steps" size="small" stripe style="margin-top:10px">
+                            <el-table-column label="#" width="40"><template #default="{row: r}">{{r.index+1}}</template></el-table-column>
+                            <el-table-column label="动作" width="120"><template #default="{row: r}">{{r.action}}</template></el-table-column>
+                            <el-table-column label="结果" width="60"><template #default="{row: r}"><el-tag :type="r.success?'success':'danger'" size="small">{{r.success?'通过':'失败'}}</el-tag></template></el-table-column>
+                            <el-table-column label="错误" min-width="200"><template #default="{row: r}">{{r.error||'-'}}</template></el-table-column>
+                            <el-table-column label="截图" width="80"><template #default="{row: r}"><el-button v-if="r.screenshot" size="small" text type="primary" @click="viewSS(r.screenshot)">查看</el-button></template></el-table-column>
+                        </el-table>
+                        <pre v-if="detail.log" style="background:#1e1e1e;color:#d4d4d4;padding:12px;border-radius:4px;margin-top:10px;max-height:300px;overflow:auto;font-size:13px">{{detail.log}}</pre>
+                    </template>
+                    <template #footer><el-button @click="dlgDetail=false">关闭</el-button></template>
+                </el-dialog>
+
+                <el-dialog v-model="dlgSS" title="截图" width="60%">
+                    <img v-if="ssImg" :src="'data:image/png;base64,'+ssImg" style="max-width:100%;border:1px solid #ddd" />
+                </el-dialog>
+            </template>
+        </div>`,
+        data(){return{store:window.NC,s:window.NC,list:[],loading:false,
+            dlgDetail:false,detail:null,dlgSS:false,ssImg:''}},
+        mounted(){
+            const sid = this.$route.params.scriptId;
+            if(sid)this.scriptIdFilter=parseInt(sid);else this.scriptIdFilter=null;
+            this.fetch();
+        },
+        watch:{'store.project.id'(){this.fetch()}},
+        methods:{
+            fmt:fmtTime,
+            async fetch(){
+                if(!this.store.project)return;this.loading=true;
+                try{
+                    const params={per_page:50};
+                    if(this.scriptIdFilter)params.script_id=this.scriptIdFilter;
+                    const r=await http.get('/web/task',{params});
+                    if(r.code===200)this.list=(r.data.items||[]).filter(Boolean);
+                }catch(e){}finally{this.loading=false}
+            },
+            async viewDetail(r){
+                try{const x=await http.get('/web/task/'+r.id);if(x.code===200)this.detail=x.data;else ElMsg.error(x.msg||'获取失败')}
+                catch(e){ElMsg.error('获取详情失败')}
+                this.dlgDetail=true;
+            },
+            viewSS(b64){this.ssImg=b64;this.dlgSS=true}
+        }
+    };
+
+    // ===================== Router =====================
+    const router = createRouter({
+        history: createWebHashHistory(),
+        routes:[
+            {path:'/login',component:LoginPage,meta:{guest:true}},
+            {path:'/register',component:RegisterPage,meta:{guest:true}},
+            {path:'/',component:MainLayout,meta:{auth:true},children:[
+                {path:'',component:Dashboard},
+                {path:'test',component:ApiTest},
+                {path:'cases',component:CaseManage},
+                {path:'ai',component:AiGenerate},
+                {path:'web',component:WebScripts},
+                {path:'web/editor/:id?',component:WebEditor},
+                {path:'web/tasks/:scriptId?',component:WebTasks}
+            ]},
+            {path:'/:pathMatch(.*)*',redirect:'/'}
+        ]
+    });
+
+    router.beforeEach((to,from,next)=>{
+        if(to.meta.auth && !window.NC.token) next('/login');
+        else if(to.meta.guest && window.NC.token) next('/');
+        else next();
+    });
+
+    // ===================== Bootstrap =====================
+    const app = createApp({template:'<router-view />'});
+    app.component('KVEditor', KVEditor);
+    app.component('DataFactoryDropdown', DataFactoryDropdown);
+    app.use(router);
+    app.use(ElementPlus);
+    // Register icons (safe fallback)
+    try{
+        if(typeof ElementPlusIconsVue !== 'undefined'){
+            for(const[key,comp] of Object.entries(ElementPlusIconsVue)){app.component(key,comp)}
+        }
+    }catch(e){console.warn('Icon registration skipped:',e)}
+    app.mount('#app');
+    console.log('NetCatch Frontend v2 loaded. API: http://127.0.0.1:5000/api');
+    </script>
+</body>
+</html>
