@@ -7,7 +7,6 @@ from app.celery_app import celery
 
 
 def _truncate_body(body, max_len=500):
-    """将响应体截断为可读预览（JSON 格式化后截断，普通字符串直接截断）"""
     if body is None:
         return None
     try:
@@ -23,7 +22,6 @@ def _truncate_body(body, max_len=500):
 
 
 def _extract_error_from_body(response_body):
-    """从响应体中提取业务错误信息，如 msg / message / error / error_msg / detail 等字段"""
     if not isinstance(response_body, dict):
         return None
     for key in ("msg", "message", "error", "error_msg", "detail"):
@@ -34,7 +32,6 @@ def _extract_error_from_body(response_body):
 
 
 def _execute_suite_cases(task_id, suite_id, environment_id=None):
-    """执行测试集合的核心逻辑（同步调用）"""
     suite = TestSuite.query.get(suite_id)
     if not suite:
         return {"error": "测试集合不存在"}
@@ -47,19 +44,16 @@ def _execute_suite_cases(task_id, suite_id, environment_id=None):
     task_record.start_time = datetime.now(timezone.utc)
     db.session.commit()
 
-    # 获取环境变量
     env_vars = {}
     if environment_id:
         env = Environment.query.get(environment_id)
         if env and env.project_id == suite.project_id:
             env_vars = env.variables or {}
 
-    # 获取所有用例
     case_ids = suite.case_ids or []
     cases = ApiCase.query.filter(ApiCase.id.in_(case_ids)).all()
     cases_dict = {c.id: c for c in cases}
 
-    # 按 case_ids 顺序执行
     details = []
     passed_count = 0
     failed_count = 0
@@ -91,7 +85,6 @@ def _execute_suite_cases(task_id, suite_id, environment_id=None):
             response_time = result["response_time_ms"]
             total_time += response_time
 
-            # 构建详情：包含状态码 + 完整断言结果 + 响应体预览
             detail = {
                 "case_id": case.id,
                 "name": case.name,
@@ -104,19 +97,15 @@ def _execute_suite_cases(task_id, suite_id, environment_id=None):
                 "response_body_preview": _truncate_body(result.get("response_body")),
             }
 
-            # --- 填充 error 字段：优先级 响应体msg > 运行时错误 > 断言失败 ---
             error_msg = None
             has_runtime_error = bool(result.get("error"))
 
-            # 1) 从响应体提取业务错误信息（如 {"msg":"用户名已存在"}）
             if not case_passed:
                 error_msg = _extract_error_from_body(result.get("response_body"))
 
-            # 2) 运行时错误（超时/连接失败等）
             if not error_msg and has_runtime_error:
                 error_msg = result["error"]
 
-            # 3) 从断言失败中拼接
             if not error_msg and not case_passed:
                 error_parts = []
                 for ar in result["assert_results"]:
@@ -130,8 +119,6 @@ def _execute_suite_cases(task_id, suite_id, environment_id=None):
                 else:
                     error_msg = "断言失败"
 
-            # --- 汇总结果 ---
-            # 最终 pass 状态：assertions 全过 且 无运行时错误
             final_passed = case_passed and not has_runtime_error
 
             if final_passed:
@@ -161,7 +148,6 @@ def _execute_suite_cases(task_id, suite_id, environment_id=None):
             })
             failed_count += 1
 
-    # 汇总结果
     result_data = {
         "total": len(case_ids),
         "passed": passed_count,
@@ -180,7 +166,6 @@ def _execute_suite_cases(task_id, suite_id, environment_id=None):
 
 
 def run_suite_task_sync(task_id, suite_id, environment_id=None):
-    """同步执行测试集合（Celery 不可用时的回退方案）"""
     from app import create_app
     app = create_app()
     with app.app_context():
@@ -189,11 +174,9 @@ def run_suite_task_sync(task_id, suite_id, environment_id=None):
 
 @celery.task(bind=True, name="run_suite_task")
 def run_suite_task(self, suite_id, environment_id=None):
-    """Celery 异步任务：执行测试集合中的所有用例"""
     from app import create_app
     app = create_app()
     with app.app_context():
-        # 查找最新的 pending 任务
         task_record = TestTask.query.filter_by(
             suite_id=suite_id,
             status="pending",
@@ -205,11 +188,8 @@ def run_suite_task(self, suite_id, environment_id=None):
         return _execute_suite_cases(task_record.id, suite_id, environment_id)
 
 
-# ==================== Web 测试脚本异步任务 ====================
-
 
 def _execute_web_script_core(task_id, variables=None):
-    """执行 Web 脚本的核心逻辑（同步调用）"""
     from app.models import WebScript, WebTestTask
     from app.utils.web_runner import run_web_script
 
@@ -249,7 +229,6 @@ def _execute_web_script_core(task_id, variables=None):
 
 
 def _format_web_log(result):
-    """格式化 Web 执行为日志文本"""
     lines = []
     steps = result.get("steps", [])
     for s in steps:
@@ -270,7 +249,6 @@ def _format_web_log(result):
 
 
 def run_web_script_task_sync(task_id, variables=None):
-    """同步执行 Web 脚本（Celery 不可用时的回退方案）"""
     from app import create_app
     app = create_app()
     with app.app_context():
@@ -279,7 +257,6 @@ def run_web_script_task_sync(task_id, variables=None):
 
 @celery.task(bind=True, name="run_web_script_task")
 def run_web_script_task(self, task_id, variables=None):
-    """Celery 异步任务：执行 Web 测试脚本"""
     from app import create_app
     app = create_app()
     with app.app_context():

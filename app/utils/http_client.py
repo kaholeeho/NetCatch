@@ -8,7 +8,6 @@ from app.utils.data_factory import _resolve_data_functions
 
 
 def replace_variables(data, env_vars: dict):
-    """递归替换字符串中的 {{变量名}} 为环境变量值，并解析 {{$函数}} 数据工厂"""
     if env_vars is None:
         env_vars = {}
 
@@ -29,13 +28,6 @@ def replace_variables(data, env_vars: dict):
 
 
 def execute_assertion(assertion: dict, status_code: int, response_body) -> dict:
-    """
-    执行单个断言，返回 {"assertion": "...", "passed": bool, "actual": ..., "expected": ...}
-    assertion 格式: {"type": "status_code", "expected": 200}
-                    {"type": "jsonpath", "path": "$.code", "expected": 0}
-                    {"type": "contains", "expected": "success"}
-                    {"type": "regex", "expected": "pattern"}
-    """
     assert_type = assertion.get("type", "")
     expected = assertion.get("expected")
     actual = None
@@ -92,12 +84,6 @@ def execute_assertion(assertion: dict, status_code: int, response_body) -> dict:
 
 
 def execute_case(case: dict, env_vars: dict = None) -> dict:
-    """
-    执行单个接口测试用例
-    case 格式: {"method": "GET", "url": "/path", "headers": {...}, "params": {...}, "body": {...}, "body_type": "json", "assertions": [...]}
-    env_vars: 环境变量字典，用于替换 {{var}}
-    返回: {"success": bool, "status_code": int, "response_body": ..., "response_time_ms": int, "assert_results": [...], "error": str}
-    """
     if env_vars is None:
         env_vars = {}
 
@@ -112,7 +98,6 @@ def execute_case(case: dict, env_vars: dict = None) -> dict:
     }
 
     try:
-        # 替换变量
         method = replace_variables(case.get("method", "GET"), env_vars).upper()
         url = replace_variables(case.get("url", ""), env_vars)
         headers = replace_variables(case.get("headers") or {}, env_vars)
@@ -121,13 +106,11 @@ def execute_case(case: dict, env_vars: dict = None) -> dict:
         body_type = case.get("body_type", "json")
         assertions = case.get("assertions") or []
 
-        # 校验 URL 包含 scheme，防止 requests 使用相对路径
         if url and not url.startswith(("http://", "https://")):
             raise ValueError(
                 f"URL 缺少协议头 (http/https): {url}"
             )
 
-        # 准备请求参数
         request_kwargs = {
             "method": method,
             "url": url,
@@ -136,7 +119,6 @@ def execute_case(case: dict, env_vars: dict = None) -> dict:
             "timeout": 30,
         }
 
-        # 处理请求体
         if body is not None:
             if body_type == "json":
                 request_kwargs["json"] = body
@@ -147,12 +129,10 @@ def execute_case(case: dict, env_vars: dict = None) -> dict:
             else:
                 request_kwargs["json"] = body
 
-        # 发送请求
         start_time = time.time()
         response = requests.request(**request_kwargs)
         elapsed_ms = int((time.time() - start_time) * 1000)
 
-        # 解析响应
         result["status_code"] = response.status_code
         result["response_time_ms"] = elapsed_ms
         result["response_headers"] = dict(response.headers)
@@ -162,7 +142,6 @@ def execute_case(case: dict, env_vars: dict = None) -> dict:
         except (json.JSONDecodeError, ValueError):
             result["response_body"] = response.text
 
-        # 执行断言
         all_passed = True
         for assertion in assertions:
             assert_result = execute_assertion(

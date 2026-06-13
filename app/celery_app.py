@@ -31,5 +31,4 @@ def make_celery(app=None):
     return celery
 
 
-# Create global celery instance (configured later in create_app)
 celery = make_celery()

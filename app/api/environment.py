@@ -8,7 +8,6 @@ from app.api import api_bp
 @api_bp.route("/environment", methods=["POST"])
 @jwt_required()
 def create_environment():
-    """创建环境"""
     try:
         user_id = int(get_jwt_identity())
         data = request.get_json()
@@ -23,7 +22,6 @@ def create_environment():
         if not name:
             return jsonify({"code": 400, "msg": "环境名称不能为空", "data": None}), 400
 
-        # 验证项目存在且属于当前用户
         project = Project.query.get(project_id)
         if not project:
             return jsonify({"code": 404, "msg": "项目不存在", "data": None}), 404
@@ -48,7 +46,6 @@ def create_environment():
 @api_bp.route("/environment", methods=["GET"])
 @jwt_required()
 def list_environments():
-    """查询环境列表（按项目筛选）"""
     try:
         user_id = int(get_jwt_identity())
         project_id = request.args.get("project_id", type=int)
@@ -56,7 +53,6 @@ def list_environments():
         if not project_id:
             return jsonify({"code": 400, "msg": "缺少 project_id 参数", "data": None}), 400
 
-        # 验证项目属于当前用户
         project = Project.query.get(project_id)
         if not project:
             return jsonify({"code": 404, "msg": "项目不存在", "data": None}), 404
@@ -79,14 +75,12 @@ def list_environments():
 @api_bp.route("/environment/<int:env_id>", methods=["PUT"])
 @jwt_required()
 def update_environment(env_id):
-    """更新环境"""
     try:
         user_id = int(get_jwt_identity())
         env = Environment.query.get(env_id)
         if not env:
             return jsonify({"code": 404, "msg": "环境不存在", "data": None}), 404
 
-        # 验证项目的归属
         project = Project.query.get(env.project_id)
         if project.owner_id != user_id:
             return jsonify({"code": 403, "msg": "无权操作此环境", "data": None}), 403
@@ -111,14 +105,12 @@ def update_environment(env_id):
 @api_bp.route("/environment/<int:env_id>", methods=["DELETE"])
 @jwt_required()
 def delete_environment(env_id):
-    """删除环境"""
     try:
         user_id = int(get_jwt_identity())
         env = Environment.query.get(env_id)
         if not env:
             return jsonify({"code": 404, "msg": "环境不存在", "data": None}), 404
 
-        # 验证项目的归属
         project = Project.query.get(env.project_id)
         if project.owner_id != user_id:
             return jsonify({"code": 403, "msg": "无权操作此环境", "data": None}), 403

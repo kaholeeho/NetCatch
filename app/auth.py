@@ -9,11 +9,6 @@ auth_bp = Blueprint("auth", __name__)
 
 @auth_bp.route("/register", methods=["POST"])
 def register():
-    """
-    用户注册
-    POST /api/auth/register
-    Body: {"username": "xxx", "password": "xxx"}
-    """
     try:
         data = request.get_json()
         if not data:
@@ -52,11 +47,6 @@ def register():
 
 @auth_bp.route("/login", methods=["POST"])
 def login():
-    """
-    用户登录
-    POST /api/auth/login
-    Body: {"username": "xxx", "password": "xxx"}
-    """
     try:
         data = request.get_json()
         if not data:
@@ -90,7 +80,6 @@ def login():
 @auth_bp.route("/me", methods=["GET"])
 @jwt_required()
 def get_current_user():
-    """获取当前登录用户信息"""
     try:
         user_id = int(get_jwt_identity())
         user = User.query.get(user_id)

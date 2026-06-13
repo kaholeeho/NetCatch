@@ -3,22 +3,11 @@ import json
 import re
 import requests
 
-# DeepSeek API 配置（通过环境变量读取）
 API_KEY = os.getenv("ANTHROPIC_AUTH_TOKEN", "")
 BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "https://api.deepseek.com/anthropic")
 
 
 def generate_cases(prompt: str, api_context: dict = None) -> list:
-    """
-    调用 DeepSeek API 生成接口测试用例
-
-    Args:
-        prompt: 用户提供的测试需求描述
-        api_context: 接口上下文信息，包含 api_url, api_method, api_params 等
-
-    Returns:
-        生成的测试用例列表，每个用例包含 name, method, url, headers, body, assertions
-    """
     if not API_KEY:
         raise ValueError("未配置 ANTHROPIC_AUTH_TOKEN（DeepSeek API Key）")
 
@@ -51,7 +40,6 @@ def generate_cases(prompt: str, api_context: dict = None) -> list:
 
 请严格按照 JSON 格式输出，不要包含任何解释文字。"""
 
-    # 系统提示词 - 强制 JSON 输出
     system_prompt = """你是一个测试用例生成专家。根据用户提供的接口信息和需求，生成一组接口测试用例。
 输出格式必须是合法的 JSON，结构如下：
 {
@@ -77,7 +65,6 @@ def generate_cases(prompt: str, api_context: dict = None) -> list:
   · 地址字段用 {{$random.address}}
 - 不要输出任何解释，只输出 JSON"""
 
-    # 调用 DeepSeek API（Anthropic 兼容接口）
     url = f"{BASE_URL}/v1/messages"
     headers = {
         "x-api-key": API_KEY,
@@ -98,7 +85,6 @@ def generate_cases(prompt: str, api_context: dict = None) -> list:
 
     result = response.json()
 
-    # 解析响应（Anthropic 消息格式）
     content = ""
     for block in result.get("content", []):
         if block.get("type") == "text":
@@ -107,17 +93,14 @@ def generate_cases(prompt: str, api_context: dict = None) -> list:
     if not content:
         raise ValueError("API 返回内容为空")
 
-    # 尝试从响应中提取并解析 JSON
     content = content.strip()
 
-    # 1) 先尝试直接解析
     parsed = None
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError:
         pass
 
-    # 2) 处理 markdown 代码块 ```json ... ```
     if parsed is None:
         match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", content, re.DOTALL)
         if match:
@@ -126,7 +109,6 @@ def generate_cases(prompt: str, api_context: dict = None) -> list:
             except json.JSONDecodeError:
                 pass
 
-    # 3) 找到第一个 { 和最后一个 } 提取 JSON
     if parsed is None:
         json_start = content.find("{")
         json_end = content.rfind("}")
@@ -145,7 +127,6 @@ def generate_cases(prompt: str, api_context: dict = None) -> list:
     if not cases:
         raise ValueError("API 返回的用例列表为空")
 
-    # 规范化和补全用例字段
     for case in cases:
         case.setdefault("method", "GET")
         case.setdefault("url", "")

@@ -11,7 +11,6 @@ class User(db.Model):
     role = db.Column(db.String(20), default="user")
     create_time = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    # relationships
     projects = db.relationship("Project", backref="owner", lazy="dynamic",
                                cascade="all, delete-orphan")
     api_cases = db.relationship("ApiCase", backref="creator", lazy="dynamic",
@@ -176,7 +175,6 @@ class WebScript(db.Model):
     update_time = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
                             onupdate=lambda: datetime.now(timezone.utc))
 
-    # relationships
     tasks = db.relationship("WebTestTask", backref="script", lazy="dynamic",
                             cascade="all, delete-orphan")
 

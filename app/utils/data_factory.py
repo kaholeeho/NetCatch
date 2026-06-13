@@ -1,7 +1,3 @@
-"""
-数据工厂模块
-提供 {{$uuid}}、{{$random.email}} 等数据工厂函数，在运行时生成动态测试数据。
-"""
 import re
 import uuid
 import random
@@ -9,31 +5,24 @@ import string
 from datetime import datetime
 
 
-# ---------- 底层单字符串解析 ----------
 
-# 匹配模式: {{$uuid}}, {{$random.email}}, {{$random.string(8)}}, {{$random.number(1,100)}}
 _FACTORY_PATTERN = re.compile(r"\{\{\$([\w.]+(?:\([^)]*\))?)\}\}")
 
 
 def _resolve_data_functions(value: str) -> str:
-    """在单条字符串中替换 {{$函数}} 数据工厂占位符"""
     if not isinstance(value, str):
         return value
 
     def replacer(match):
-        expr = match.group(1)  # "uuid", "random.email", "random.string(8)"
+        expr = match.group(1)
         return _execute_function(expr)
 
     return _FACTORY_PATTERN.sub(replacer, value)
 
 
-# ---------- 递归版本（字典/列表/字符串） ----------
+
 
 def resolve_data_function(data):
-    """递归替换数据结构中所有字符串的 {{$函数}} 数据工厂占位符
-
-    支持递归处理 dict / list / str，与 replace_variables 签名对齐。
-    """
     if isinstance(data, str):
         return _resolve_data_functions(data)
     if isinstance(data, dict):
@@ -43,12 +32,8 @@ def resolve_data_function(data):
     return data
 
 
-# ---------- 函数执行引擎 ----------
-
 def _execute_function(expr: str) -> str:
-    """执行单个数据工厂表达式，返回生成的字符串值"""
 
-    # 解析参数: func_name 或 func_name(arg1,arg2,...)
     if '(' in expr and expr.endswith(')'):
         paren_idx = expr.index('(')
         name = expr[:paren_idx]
@@ -58,7 +43,6 @@ def _execute_function(expr: str) -> str:
         name = expr
         args = []
 
-    # ----- 基础函数 -----
     if name == 'uuid':
         return str(uuid.uuid4())
 
@@ -68,7 +52,6 @@ def _execute_function(expr: str) -> str:
     if name == 'datetime':
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # ----- 随机数据函数 -----
     if name == 'random.email':
         _chars = string.ascii_lowercase + string.digits
         local_part = ''.join(random.choices(_chars, k=8))
@@ -106,5 +89,4 @@ def _execute_function(expr: str) -> str:
             a, b = b, a
         return str(random.randint(a, b))
 
-    # 未识别的函数 — 保留原样
     return "$" + expr

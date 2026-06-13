@@ -5,7 +5,6 @@ load_dotenv()
 
 
 class Config:
-    # MySQL
     MYSQL_USER = os.getenv("MYSQL_USER", "root")
     MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
     MYSQL_HOST = os.getenv("MYSQL_HOST", "127.0.0.1")
@@ -18,18 +17,14 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # Flask secret
     SECRET_KEY = os.getenv("SECRET_KEY", "netcatch-default-secret")
 
-    # JWT
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
     JWT_ACCESS_TOKEN_EXPIRES = int(os.getenv("JWT_EXPIRATION_SECONDS", 604800))
 
-    # Redis / Celery
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     CELERY_BROKER_URL = REDIS_URL
     CELERY_RESULT_BACKEND = REDIS_URL
 
-    # DeepSeek / Anthropic compatible API
     ANTHROPIC_AUTH_TOKEN = os.getenv("ANTHROPIC_AUTH_TOKEN", "")
     ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "https://api.deepseek.com/anthropic")

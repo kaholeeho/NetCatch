@@ -6,12 +6,9 @@ from app.models import Project, TestSuite, TestTask, Environment, ApiCase
 from app.api import api_bp
 
 
-# ==================== 测试集合 CRUD ====================
-
 @api_bp.route("/suite", methods=["POST"])
 @jwt_required()
 def create_suite():
-    """创建测试集合"""
     try:
         user_id = int(get_jwt_identity())
         data = request.get_json()
@@ -50,7 +47,6 @@ def create_suite():
 @api_bp.route("/suite", methods=["GET"])
 @jwt_required()
 def list_suites():
-    """查询测试集合列表"""
     try:
         user_id = int(get_jwt_identity())
         project_id = request.args.get("project_id", type=int)
@@ -80,7 +76,6 @@ def list_suites():
 @api_bp.route("/suite/<int:suite_id>", methods=["GET"])
 @jwt_required()
 def get_suite(suite_id):
-    """获取测试集合详情"""
     try:
         user_id = int(get_jwt_identity())
         suite = TestSuite.query.get(suite_id)
@@ -91,7 +86,6 @@ def get_suite(suite_id):
         if project.owner_id != user_id:
             return jsonify({"code": 403, "msg": "无权查看此集合", "data": None}), 403
 
-        # 附带用例详细信息
         data = suite.to_dict()
         if suite.case_ids:
             cases = ApiCase.query.filter(ApiCase.id.in_(suite.case_ids)).all()
@@ -108,7 +102,6 @@ def get_suite(suite_id):
 @api_bp.route("/suite/<int:suite_id>", methods=["PUT"])
 @jwt_required()
 def update_suite(suite_id):
-    """更新测试集合"""
     try:
         user_id = int(get_jwt_identity())
         suite = TestSuite.query.get(suite_id)
@@ -139,7 +132,6 @@ def update_suite(suite_id):
 @api_bp.route("/suite/<int:suite_id>", methods=["DELETE"])
 @jwt_required()
 def delete_suite(suite_id):
-    """删除测试集合"""
     try:
         user_id = int(get_jwt_identity())
         suite = TestSuite.query.get(suite_id)
@@ -158,16 +150,9 @@ def delete_suite(suite_id):
         db.session.rollback()
         return jsonify({"code": 500, "msg": f"删除集合失败: {str(e)}", "data": None}), 500
 
-
-# ==================== 集合执行 ====================
-
 @api_bp.route("/suite/<int:suite_id>/run", methods=["POST"])
 @jwt_required()
 def run_suite(suite_id):
-    """
-    提交测试集合执行
-    可选 body: {"environment_id": 1} 指定环境变量
-    """
     try:
         user_id = int(get_jwt_identity())
         suite = TestSuite.query.get(suite_id)
@@ -184,7 +169,6 @@ def run_suite(suite_id):
         data = request.get_json() or {}
         environment_id = data.get("environment_id")
 
-        # 创建测试任务记录
         task = TestTask(
             suite_id=suite_id,
             status="pending",
@@ -192,12 +176,10 @@ def run_suite(suite_id):
         db.session.add(task)
         db.session.commit()
 
-        # 尝试提交 Celery 异步任务
         try:
             from app.tasks.test_runner import run_suite_task
             run_suite_task.delay(suite_id, environment_id)
         except Exception:
-            # Celery 不可用时同步执行
             from app.tasks.test_runner import run_suite_task_sync
             run_suite_task_sync(task.id, suite_id, environment_id)
 
@@ -212,19 +194,15 @@ def run_suite(suite_id):
         return jsonify({"code": 500, "msg": f"提交执行失败: {str(e)}", "data": None}), 500
 
 
-# ==================== 任务状态查询 ====================
-
 @api_bp.route("/task/<int:task_id>", methods=["GET"])
 @jwt_required()
 def get_task(task_id):
-    """查询任务状态和结果"""
     try:
         user_id = int(get_jwt_identity())
         task = TestTask.query.get(task_id)
         if not task:
             return jsonify({"code": 404, "msg": "任务不存在", "data": None}), 404
 
-        # 验证权限（通过 suite -> project）
         suite = TestSuite.query.get(task.suite_id)
         project = Project.query.get(suite.project_id)
         if project.owner_id != user_id:
@@ -243,7 +221,6 @@ def get_task(task_id):
 @api_bp.route("/task", methods=["GET"])
 @jwt_required()
 def list_tasks():
-    """查询任务列表（按项目筛选）"""
     try:
         user_id = int(get_jwt_identity())
         project_id = request.args.get("project_id", type=int)
@@ -257,7 +234,6 @@ def list_tasks():
         if project.owner_id != user_id:
             return jsonify({"code": 403, "msg": "无权查看此项目", "data": None}), 403
 
-        # 查出该项目下所有 suite 的任务
         suite_ids = [s.id for s in TestSuite.query.filter_by(project_id=project_id).all()]
         if not suite_ids:
             return jsonify({"code": 200, "msg": "获取成功", "data": []}), 200
@@ -275,12 +251,10 @@ def list_tasks():
         return jsonify({"code": 500, "msg": f"获取任务列表失败: {str(e)}", "data": None}), 500
 
 
-# ==================== 测试报告 ====================
 
 @api_bp.route("/report/<int:task_id>", methods=["GET"])
 @jwt_required()
 def get_report(task_id):
-    """获取格式化测试报告"""
     try:
         user_id = int(get_jwt_identity())
         task = TestTask.query.get(task_id)
@@ -319,7 +293,6 @@ def get_report(task_id):
 @api_bp.route("/report", methods=["GET"])
 @jwt_required()
 def list_reports():
-    """列出项目的所有报告"""
     try:
         user_id = int(get_jwt_identity())
         project_id = request.args.get("project_id", type=int)

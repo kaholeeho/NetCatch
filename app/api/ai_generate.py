@@ -9,17 +9,6 @@ from app.api import api_bp
 @api_bp.route("/ai/generate/api-case", methods=["POST"])
 @jwt_required()
 def generate_api_case():
-    """
-    AI 生成接口测试用例
-    请求体: {
-        "project_id": 1,
-        "api_url": "/api/user",
-        "api_method": "POST",
-        "api_params": {},
-        "prompt": "根据用户注册接口生成测试用例...",
-        "case_count": 10
-    }
-    """
     try:
         user_id = int(get_jwt_identity())
         data = request.get_json()
@@ -38,14 +27,12 @@ def generate_api_case():
         if not prompt:
             return jsonify({"code": 400, "msg": "提示词不能为空", "data": None}), 400
 
-        # 验证项目权限
         project = Project.query.get(project_id)
         if not project:
             return jsonify({"code": 404, "msg": "项目不存在", "data": None}), 404
         if project.owner_id != user_id:
             return jsonify({"code": 403, "msg": "无权操作此项目", "data": None}), 403
 
-        # 创建生成记录（初始状态为 pending）
         record = AiGenerateRecord(
             project_id=project_id,
             create_user=user_id,
@@ -63,7 +50,6 @@ def generate_api_case():
         db.session.add(record)
         db.session.commit()
 
-        # 调用 DeepSeek API 生成用例
         try:
             api_context = {
                 "api_url": api_url,
@@ -107,13 +93,6 @@ def generate_api_case():
 @api_bp.route("/ai/import", methods=["POST"])
 @jwt_required()
 def import_cases():
-    """
-    将 AI 生成的用例导入到 ApiCase 表
-    请求体: {
-        "record_id": 123,
-        "case_ids_to_import": [0, 1, 2]  # 用户选择要导入的用例索引
-    }
-    """
     try:
         user_id = int(get_jwt_identity())
         data = request.get_json()
@@ -128,12 +107,10 @@ def import_cases():
         if not case_ids_to_import:
             return jsonify({"code": 400, "msg": "请选择要导入的用例", "data": None}), 400
 
-        # 查询生成记录
         record = AiGenerateRecord.query.get(record_id)
         if not record:
             return jsonify({"code": 404, "msg": "生成记录不存在", "data": None}), 404
 
-        # 验证权限
         project = Project.query.get(record.project_id)
         if project.owner_id != user_id:
             return jsonify({"code": 403, "msg": "无权操作此项目", "data": None}), 403
@@ -141,7 +118,6 @@ def import_cases():
         if record.status != "success" or not record.generated_cases:
             return jsonify({"code": 400, "msg": "该记录没有可导入的用例", "data": None}), 400
 
-        # 导入选中的用例
         all_cases = record.generated_cases
         imported = []
         for idx in case_ids_to_import:
@@ -182,7 +158,6 @@ def import_cases():
 @api_bp.route("/ai/record", methods=["GET"])
 @jwt_required()
 def list_ai_records():
-    """查询 AI 生成记录列表"""
     try:
         user_id = int(get_jwt_identity())
         project_id = request.args.get("project_id", type=int)
@@ -212,7 +187,6 @@ def list_ai_records():
 @api_bp.route("/ai/record/<int:record_id>", methods=["GET"])
 @jwt_required()
 def get_ai_record(record_id):
-    """查询 AI 生成记录详情"""
     try:
         user_id = int(get_jwt_identity())
         record = AiGenerateRecord.query.get(record_id)

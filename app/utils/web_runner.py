@@ -1,6 +1,3 @@
-"""
-Web 自动化测试执行引擎 (Playwright)
-"""
 import re
 import time
 import base64
@@ -10,7 +7,6 @@ from app.utils.data_factory import _resolve_data_functions
 
 
 def substitute_vars(value, variables):
-    """递归替换 {{var}} 占位符并解析 {{$函数}} 数据工厂"""
     if isinstance(value, str):
         def replace_var(m):
             var_name = m.group(1)
@@ -25,7 +21,6 @@ def substitute_vars(value, variables):
 
 
 def execute_step(page, step):
-    """执行单个操作步骤，返回结果字典"""
     action = step.get("action", "")
     result = {"action": action, "success": True, "error": None, "screenshot": None}
 
@@ -109,7 +104,6 @@ def execute_step(page, step):
         result["success"] = True
 
     except Exception as e:
-        # 截图保存现场
         try:
             screenshot_bytes = page.screenshot(full_page=False)
             result["screenshot"] = base64.b64encode(screenshot_bytes).decode("utf-8")
@@ -122,16 +116,6 @@ def execute_step(page, step):
 
 
 def run_web_script(script, variables=None):
-    """
-    执行完整的 Web 测试脚本
-
-    Args:
-        script: dict 包含 url, steps, variables 等字段
-        variables: dict 用于替换 {{var}} 占位符
-
-    Returns:
-        dict 包含 success, steps, error, total_time_ms
-    """
     script_vars = dict(script.get("variables") or {})
     if variables:
         script_vars.update(variables)
@@ -168,8 +152,6 @@ def run_web_script(script, variables=None):
 
                     if not step_result["success"]:
                         all_passed = False
-                        # 失败的步骤也继续执行，但标记整体失败
-                        # 如果步骤要求停止，可设置 stop_on_fail
                         if step.get("stop_on_fail", False):
                             break
 

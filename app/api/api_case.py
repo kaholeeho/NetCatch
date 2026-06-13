@@ -9,7 +9,6 @@ from app.api import api_bp
 @api_bp.route("/case", methods=["POST"])
 @jwt_required()
 def create_case():
-    """创建接口测试用例"""
     try:
         user_id = int(get_jwt_identity())
         data = request.get_json()
@@ -30,7 +29,6 @@ def create_case():
         if not url:
             return jsonify({"code": 400, "msg": "请求URL不能为空", "data": None}), 400
 
-        # 验证项目存在且属于当前用户
         project = Project.query.get(project_id)
         if not project:
             return jsonify({"code": 404, "msg": "项目不存在", "data": None}), 404
@@ -63,7 +61,6 @@ def create_case():
 @api_bp.route("/case", methods=["GET"])
 @jwt_required()
 def list_cases():
-    """查询用例列表（按项目筛选）"""
     try:
         user_id = int(get_jwt_identity())
         project_id = request.args.get("project_id", type=int)
@@ -93,7 +90,6 @@ def list_cases():
 @api_bp.route("/case/<int:case_id>", methods=["GET"])
 @jwt_required()
 def get_case(case_id):
-    """获取用例详情"""
     try:
         user_id = int(get_jwt_identity())
         case = ApiCase.query.get(case_id)
@@ -114,7 +110,6 @@ def get_case(case_id):
 @api_bp.route("/case/<int:case_id>", methods=["PUT"])
 @jwt_required()
 def update_case(case_id):
-    """更新用例"""
     try:
         user_id = int(get_jwt_identity())
         case = ApiCase.query.get(case_id)
@@ -162,7 +157,6 @@ def update_case(case_id):
 @api_bp.route("/case/<int:case_id>", methods=["DELETE"])
 @jwt_required()
 def delete_case(case_id):
-    """删除用例"""
     try:
         user_id = int(get_jwt_identity())
         case = ApiCase.query.get(case_id)
@@ -185,10 +179,6 @@ def delete_case(case_id):
 @api_bp.route("/case/<int:case_id>/debug", methods=["POST"])
 @jwt_required()
 def debug_case(case_id):
-    """
-    调试单个用例（同步执行）
-    可选 body 参数指定环境变量 environment_id，用于替换 {{var}}
-    """
     try:
         user_id = int(get_jwt_identity())
         case = ApiCase.query.get(case_id)
@@ -199,7 +189,6 @@ def debug_case(case_id):
         if project.owner_id != user_id:
             return jsonify({"code": 403, "msg": "无权操作此用例", "data": None}), 403
 
-        # 获取环境变量
         data = request.get_json() or {}
         env_vars = {}
         env_id = data.get("environment_id")
@@ -208,7 +197,6 @@ def debug_case(case_id):
             if env and env.project_id == case.project_id:
                 env_vars = env.variables or {}
 
-        # 执行用例
         result = execute_case(case.to_dict(), env_vars)
 
         return jsonify({

@@ -8,7 +8,6 @@ from app.api import api_bp
 @api_bp.route("/project", methods=["POST"])
 @jwt_required()
 def create_project():
-    """创建项目"""
     try:
         user_id = int(get_jwt_identity())
         data = request.get_json()
@@ -37,7 +36,6 @@ def create_project():
 @api_bp.route("/project", methods=["GET"])
 @jwt_required()
 def list_projects():
-    """查询当前用户的项目列表"""
     try:
         user_id = int(get_jwt_identity())
         projects = Project.query.filter_by(owner_id=user_id)\
@@ -55,7 +53,6 @@ def list_projects():
 @api_bp.route("/project/<int:project_id>", methods=["PUT"])
 @jwt_required()
 def update_project(project_id):
-    """更新项目"""
     try:
         user_id = int(get_jwt_identity())
         project = Project.query.get(project_id)
@@ -84,7 +81,6 @@ def update_project(project_id):
 @api_bp.route("/project/<int:project_id>", methods=["DELETE"])
 @jwt_required()
 def delete_project(project_id):
-    """删除项目（级联删除其下的环境和用例）"""
     try:
         user_id = int(get_jwt_identity())
         project = Project.query.get(project_id)
